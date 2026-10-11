@@ -92,7 +92,9 @@ def extract(app, output):
             key = max((k for k in music if k <= lev['number']+103),default=None)
             tracks.append(music.get(key))
         (folder/'levels.json').write_text(json.dumps(levels,separators=(',',':')))
-        packs.append({'id':index,'name':['The Original','Pack 2','Pack 3'][index], 'levels':len(levels),'music':tracks})
+        from extract_scenes import extract_scenes
+        scenes = extract_scenes(res, folder)
+        packs.append({'scenes': scenes, 'sceneMusic': {name: music.get(101+i) for i,name in enumerate(['intro','outro','youwon'])}, 'id':index,'name':['The Original','Pack 2','Pack 3'][index], 'levels':len(levels),'music':tracks})
         print(f'Pack {index}: {len(levels)} levels, {len(images)} sprites, {len(music)} music entries')
     (output/'manifest.json').write_text(json.dumps({'packs':packs,'sha256':provenance},indent=2))
 

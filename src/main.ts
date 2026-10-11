@@ -8,6 +8,7 @@ import {
   type Phase,
 } from "./engine";
 import { loadArt, json, asset, type Manifest } from "./assets";
+import { Cinema, type SceneName } from "./cinematics";
 import { Renderer } from "./renderer";
 import { Sound } from "./audio";
 import { readSave, writeSave } from "./storage";
@@ -28,6 +29,7 @@ let manifest: Manifest,
   token = 0,
   lastPhase: Phase | "" = "",
   lastFrame = 0;
+let cinema: Cinema | undefined;
 let levelDialogPack = pack,
   menuPaused = false;
 const keys = new Set<string>();
@@ -45,7 +47,7 @@ $("#app").innerHTML = `
   </section>
   <aside><div class="panel session-panel"><div class="section-label"><span>YOUR SESSION</span><span class="live-dot">●</span></div><div class="level-number"><span id="level-big">01</span><div>LEVEL<span id="level-count">OF 30</span></div></div>
     <div class="progress"><div id="progress"></div></div><div class="progress-label"><span id="progress-text">Ready when you are</span><span id="progress-percent">0%</span></div>
-    <button id="pause" class="wide">Ⅱ <span>Pause game</span><kbd>P</kbd></button><button id="levels" class="wide">▦ <span>Choose a level</span><span>↗</span></button><button id="settings" class="wide">☷ <span>Game settings</span><span>↗</span></button><button id="restart" class="quiet restart">↻ Restart session</button>
+    <button id="pause" class="wide">Ⅱ <span>Pause game</span><kbd>P</kbd></button><button id="levels" class="wide">▦ <span>Choose a level</span><span>↗</span></button><button id="settings" class="wide">☷ <span>Game settings</span><span>↗</span></button><button id="cinematics" class="wide">▷ <span>Original 3D scenes</span><span>↗</span></button><button id="restart" class="quiet restart">↻ Restart session</button>
   </div>
   <div class="panel controls"><div class="section-label">HOW TO PLAY</div><p>Move the bat.<br>Keep the ball alive.<br><em>Break every brick.</em></p><div class="control-row"><span>Move</span><span>Mouse / touch / <kbd>←</kbd><kbd>→</kbd></span></div><div class="control-row"><span>Launch / fire</span><span>Click / <kbd>Space</kbd></span></div><div class="control-row"><span>Pause</span><kbd>P</kbd></div><button id="bonuses" class="bonus-link">22 bonuses. Learn the symbols <span>↗</span></button></div>
   <div class="footnote"><span>110</span> original levels.<br>Three packs. One more try.</div></aside></div>
@@ -63,7 +65,7 @@ best.textContent = String(save.best).padStart(6, "0");
 
 function store() {
   save.pack = pack;
-  save.level = level;
+  save.level = game.phase === "gameover" ? 1 : level;
   save.best = Math.max(save.best, game.score);
   save.settings = { ...game.settings };
   save.muted = sound.muted;
@@ -116,7 +118,7 @@ function activate() {
   else if (game.phase === "cleared") {
     if (level < manifest.packs[pack].levels) void load(pack, level + 1, false);
     else void load((pack + 1) % manifest.packs.length, 1, false);
-  } else if (game.phase === "gameover") void load(pack, level, true);
+  } else if (game.phase === "gameover") void load(pack, 1, true);
   else game.launch();
   canvas.focus({ preventScroll: true });
   updateUI();
@@ -170,8 +172,8 @@ function updateUI() {
   if (game.phase === "gameover") {
     kicker.textContent = "ONE MORE TRY?";
     title.textContent = "Game over.";
-    copy.textContent = `You scored ${game.score.toLocaleString()} points.`;
-    button.innerHTML = "Play again <span>↻</span>";
+    copy.textContent = `You scored ${game.score.toLocaleString()} points. Start again at level 1.`;
+    button.innerHTML = "Start from level 1 <span>↻</span>";
     store();
   }
   if (game.phase === "cleared") {
@@ -206,6 +208,11 @@ function openDialog(title: string, content: string) {
   updateUI();
 }
 function closeDialog() {
+  if (cinema) {
+    cinema.dispose();
+    cinema = undefined;
+    void sound.track(pack, manifest.packs[pack].music[level - 1]);
+  }
   dialog.close();
   if (menuPaused && game.phase === "paused") game.pause();
   sound.pause(game.phase === "paused");
@@ -274,14 +281,14 @@ $("#settings").onclick = () => {
   const sliders = [
     ["speed", "Starting ball speed", 200, 700, 10, "px/s"],
     ["acceleration", "Ball acceleration", 0, 15, 1, "px/s²"],
-    ["bonusRate", "Bonus frequency", 0, 0.5, 0.01, "%"],
+    ["bonusFrequency", "Bonus frequency (0 = off)", 0, 9, 1, "/ 9"],
     ["bonusSpeed", "Falling bonus speed", 50, 220, 5, "px/s"],
     ["maxBonuses", "Bonuses on screen", 1, 22, 1, ""],
     ["volume", "Audio volume", 0, 1, 0.05, "%"],
   ] as const;
   openDialog(
     "Make it your game.",
-    `<p class="dialog-intro">Tune the pace, the risk, and the reward. Settings save automatically.</p><div class="settings-list">${sliders.map(([key, label, min, max, step, unit]) => `<label class="setting"><span>${label}<output id="value-${key}"></output></span><input type="range" id="setting-${key}" min="${min}" max="${max}" step="${step}" value="${game.settings[key]}" data-unit="${unit}"></label>`).join("")}<label class="check-setting">Original music <input type="checkbox" id="music-setting" ${game.settings.music ? "checked" : ""}></label></div><button class="wide" id="restore">Restore default settings</button>`,
+    `<p class="dialog-intro">Tune the pace, the risk, and the reward. Bonus frequency uses the original 1–9 scale; 0 disables drops. Settings save automatically.</p><div class="settings-list">${sliders.map(([key, label, min, max, step, unit]) => `<label class="setting"><span>${label}<output id="value-${key}"></output></span><input type="range" id="setting-${key}" min="${min}" max="${max}" step="${step}" value="${game.settings[key]}" data-unit="${unit}"></label>`).join("")}<label class="check-setting">Original music <input type="checkbox" id="music-setting" ${game.settings.music ? "checked" : ""}></label></div><button class="wide" id="restore">Restore default settings</button>`,
   );
   for (const [key, , , , , unit] of sliders) {
     const input = $<HTMLInputElement>(`#setting-${key}`);
@@ -333,13 +340,82 @@ $("#bonuses").onclick = () => {
       );
   });
 };
+$("#cinematics").onclick = () => {
+  if (loading) return;
+  openDialog(
+    "The original 3D scenes.",
+    `<div class="cinema-controls"><label>Pack<select id="cinema-pack">${manifest.packs.map((p) => `<option value="${p.id}" ${p.id === pack ? "selected" : ""}>${p.name}</option>`).join("")}</select></label><label>Scene<select id="cinema-scene"><option value="intro">Introduction</option><option value="outro">Game over</option><option value="youwon">Victory</option></select></label></div><canvas id="cinema" width="1024" height="768" aria-label="Recovered original 3D animation"></canvas><p id="cinema-status" role="status">Loading original meshes…</p><div class="cinema-transport"><button id="cinema-toggle" disabled>Pause scene</button><button id="cinema-restart" disabled>Replay</button><output id="cinema-time"></output></div><label class="cinema-timeline">Scene timeline<input id="cinema-seek" type="range" min="0" max="1" value="0" step="1" disabled></label><p class="dialog-intro">Original models, textures, and recovered movement scripts. Browser lighting and 60 fps playback. You can return to your game at any time.</p>`,
+  );
+  try {
+    cinema = new Cinema($<HTMLCanvasElement>("#cinema"));
+  } catch (error) {
+    $("#cinema-status").textContent = String(error);
+    return;
+  }
+  let request = 0;
+  const change = async () => {
+    const current = ++request,
+      player = cinema!;
+    const selectedPack = Number($<HTMLSelectElement>("#cinema-pack").value);
+    const scene = $<HTMLSelectElement>("#cinema-scene").value as SceneName;
+    player.playing = false;
+    $("#cinema-status").textContent = "Loading original meshes…";
+    for (const id of ["cinema-toggle", "cinema-restart", "cinema-seek"])
+      $<HTMLButtonElement>(`#${id}`).disabled = true;
+    try {
+      await player.load(selectedPack, scene);
+      if (current !== request || cinema !== player) return;
+      $<HTMLInputElement>("#cinema-seek").max = String(player.scene!.frames);
+      for (const id of ["cinema-toggle", "cinema-restart", "cinema-seek"])
+        $<HTMLButtonElement>(`#${id}`).disabled = false;
+      $("#cinema-status").textContent =
+        `${player.scene!.meshes.length} original models · ${(scene === "intro" && selectedPack === 0) || (scene === "youwon" && selectedPack === 1) ? "Recovered sequence; undecoded trailing records omitted" : "Recovered sequence"}`;
+      await sound.unlock();
+      if (current !== request || cinema !== player) return;
+      void sound.track(
+        selectedPack,
+        manifest.packs[selectedPack].sceneMusic[scene],
+      );
+    } catch (error) {
+      if (cinema === player && current === request)
+        $("#cinema-status").textContent = String(error);
+    }
+  };
+  $("#cinema-pack").onchange = () => void change();
+  $("#cinema-scene").onchange = () => void change();
+  $("#cinema-toggle").onclick = () => {
+    if (cinema) {
+      if (cinema.frame >= cinema.scene!.frames) cinema.frame = 0;
+      cinema.playing = !cinema.playing;
+      sound.pause(!cinema.playing);
+    }
+  };
+  $("#cinema-restart").onclick = () => {
+    if (cinema) {
+      cinema.frame = 0;
+      cinema.playing = true;
+      sound.pause(false);
+    }
+  };
+  $("#cinema-seek").oninput = (e) => {
+    if (cinema) {
+      cinema.frame = Number((e.target as HTMLInputElement).value);
+      cinema.render();
+    }
+  };
+  void change();
+};
 $("#about").onclick = () =>
   openDialog(
     "A classic, recovered.",
-    `<div class="about-copy"><p>Jarkanoid 3 was created by <strong>Jérôme Barjot / ElitzaSoftware</strong>. This unofficial browser port uses the original game’s 110 level layouts, graphics, animated sprites, sound effects, and music, recovered from the official installer.</p><p>The engine is a new TypeScript implementation informed by static analysis of the Visual Basic 6 executable. It is playable without Windows, DirectX, or plugins.</p><p>Physics, effect timing, MIDI instruments, and the interface are adapted for the browser. The original 3D intro and outro sequences are not reproduced. This is a preservation port, not a claim of byte-for-byte equivalence or recovered original source code.</p><p>Original game and assets © Jérôme Barjot. <a href="http://www.jarkanoid.com/" target="_blank" rel="noreferrer">Visit the original website ↗</a></p></div>`,
+    `<div class="about-copy"><p>Jarkanoid 3 was created by <strong>Jérôme Barjot / ElitzaSoftware</strong>. This unofficial browser port uses the original game’s 110 level layouts, graphics, animated sprites, sound effects, and music, recovered from the official installer.</p><p>The engine is a new TypeScript implementation informed by static analysis of the Visual Basic 6 executable. It is playable without Windows, DirectX, or plugins.</p><p>Physics, effect timing, MIDI instruments, and the interface are adapted for the browser. The original 3D meshes and decoded animation scripts now play in WebGL. Scene lighting and playback speed are adapted; two scripts have undecoded trailing records. This is a preservation port, not a claim of byte-for-byte equivalence or recovered original source code.</p><p>Original game and assets © Jérôme Barjot. <a href="http://www.jarkanoid.com/" target="_blank" rel="noreferrer">Visit the original website ↗</a></p></div>`,
   );
 $("#restart").onclick = () => {
   if (loading) return;
+  if (game.phase === "gameover") {
+    activate();
+    return;
+  }
   openDialog(
     "Start a fresh session?",
     '<p class="dialog-intro">Your current score and lives will reset. Your best score and unlocked levels stay saved.</p><button class="primary" id="confirm-restart">Restart this level ↻</button>',
@@ -455,6 +531,15 @@ function frame(time: number) {
       game.update(dt);
     }
     renderer.render(game);
+    if (cinema?.scene) {
+      cinema.update(dt);
+      $<HTMLInputElement>("#cinema-seek").value = String(cinema.frame);
+      $("#cinema-time").textContent =
+        `${(cinema.frame / 60).toFixed(1)} / ${(cinema.scene.frames / 60).toFixed(1)} s`;
+      $("#cinema-toggle").textContent = cinema.playing
+        ? "Pause scene"
+        : "Play scene";
+    }
     for (const event of game.events.splice(0)) void sound.effect(event, pack);
     if (time > nextHud || game.phase !== lastPhase) {
       updateUI();
@@ -482,6 +567,9 @@ if (import.meta.env.DEV)
       load,
       renderer,
       sound,
+      get cinema() {
+        return cinema;
+      },
       get pack() {
         return pack;
       },

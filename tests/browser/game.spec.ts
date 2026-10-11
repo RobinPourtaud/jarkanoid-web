@@ -142,3 +142,115 @@ test("phone sized viewport has no overflow and accepts touch pointer movement", 
   await expect(page.locator(".bonus-item")).toHaveCount(22);
   await context.close();
 });
+
+test("all nine original cinematics render, seek, pause, and return to the game", async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    if (response.status() >= 400)
+      errors.push(`${response.status()} ${response.url()}`);
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).click();
+  await page.getByRole("button", { name: "Original 3D scenes" }).click();
+  await expect(page.locator("#cinema-toggle")).toBeEnabled();
+  const gameBefore = await page.evaluate(() =>
+    JSON.stringify((window as any).__jarkanoid.game.balls),
+  );
+  for (let pack = 0; pack < 3; pack++) {
+    await page.locator("#cinema-pack").selectOption(String(pack));
+    for (const scene of ["intro", "outro", "youwon"]) {
+      await page.locator("#cinema-scene").selectOption(scene);
+      await expect(page.locator("#cinema-status")).toContainText(
+        "original models",
+      );
+      await page
+        .getByRole("button", { name: "Pause scene", exact: true })
+        .click();
+      const frame = await page.locator("#cinema-seek").inputValue();
+      await page.waitForTimeout(120);
+      await expect(page.locator("#cinema-seek")).toHaveValue(frame);
+      const pixels = await page.evaluate(() => {
+        const player = (window as any).__jarkanoid.cinema;
+        const gl = player.canvas.getContext("webgl");
+        let lit = 0;
+        const data = new Uint8Array(1024 * 768 * 4);
+        for (const fraction of [0.1, 0.25, 0.5, 0.75]) {
+          player.frame = player.scene.frames * fraction;
+          player.render();
+          gl.readPixels(0, 0, 1024, 768, gl.RGBA, gl.UNSIGNED_BYTE, data);
+          for (let i = 0; i < data.length; i += 64)
+            if (data[i] + data[i + 1] + data[i + 2] > 20) lit++;
+        }
+        return { lit, error: gl.getError() };
+      });
+      expect(pixels.error).toBe(0);
+      expect(pixels.lit, `${pack}/${scene} renders geometry`).toBeGreaterThan(
+        50,
+      );
+      await page.locator("#cinema-seek").fill("60");
+      await expect(page.locator("#cinema-time")).toContainText("1.0 /");
+    }
+  }
+  expect(
+    await page.evaluate(() =>
+      JSON.stringify((window as any).__jarkanoid.game.balls),
+    ),
+  ).toBe(gameBefore);
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.locator("#overlay")).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__jarkanoid.game.phase))
+    .toBe("playing");
+  expect(errors).toEqual([]);
+});
+
+test("game over restarts at level one of the same pack with a fresh score and lives", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  await page.evaluate(async () => {
+    const app = (window as any).__jarkanoid;
+    await app.load(2, 17);
+    app.game.score = 5432;
+    app.game.lives = 1;
+    app.game.loseLife();
+  });
+  await expect(
+    page.getByRole("heading", { name: "Game over.", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Start from level 1" }).click();
+  await expect(page.locator("#pack-label")).toHaveText("Pack 3");
+  await expect(page.locator("#level-title")).toHaveText("LEVEL 01");
+  await expect(page.locator("#score")).toHaveText("000000");
+  await expect(page.locator("#lives")).toHaveText("03");
+  await expect(page.locator("#best")).toHaveText("005432");
+  await page.reload();
+  await expect(page.locator("#level-title")).toHaveText("LEVEL 01");
+});
+
+test("old default bonus settings migrate to native defaults and zero frequency persists", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("jarkanoid3-v1"))
+      localStorage.setItem(
+        "jarkanoid3-v1",
+        JSON.stringify({ settings: { bonusRate: 0.16, maxBonuses: 6 } }),
+      );
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  await page.getByRole("button", { name: "Game settings" }).click();
+  await expect(page.locator("#setting-bonusFrequency")).toHaveValue("5");
+  await expect(page.locator("#setting-maxBonuses")).toHaveValue("3");
+  await page.locator("#setting-bonusFrequency").fill("0");
+  await page.reload();
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  await page.getByRole("button", { name: "Game settings" }).click();
+  await expect(page.locator("#setting-bonusFrequency")).toHaveValue("0");
+});

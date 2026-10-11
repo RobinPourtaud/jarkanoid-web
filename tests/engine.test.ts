@@ -45,10 +45,10 @@ test("loads every original level losslessly and validates the grid", () => {
 test("bat and attached ball stay inside bounds", () => {
   const g = gameWith();
   g.movePaddle(-100);
-  assert.equal(g.paddleX, 53.5);
-  assert.equal(g.balls[0].x, 53.5);
+  assert.equal(g.paddleX, 43.5);
+  assert.equal(g.balls[0].x, 43.5);
   g.movePaddle(WIDTH + 100);
-  assert.equal(g.paddleX, WIDTH - 53.5);
+  assert.equal(g.paddleX, WIDTH - 43.5);
   g.launch();
   assert.equal(g.phase, "playing");
   assert.ok(g.balls[0].vy < 0);

@@ -28,7 +28,7 @@ export type Level = { number: number; cells: number[] };
 export type Settings = {
   speed: number;
   acceleration: number;
-  bonusRate: number;
+  bonusFrequency: number;
   bonusSpeed: number;
   maxBonuses: number;
   volume: number;
@@ -37,15 +37,15 @@ export type Settings = {
 export const defaults: Settings = {
   speed: 390,
   acceleration: 4,
-  bonusRate: 0.16,
+  bonusFrequency: 5,
   bonusSpeed: 105,
-  maxBonuses: 6,
+  maxBonuses: 3,
   volume: 0.55,
   music: true,
 };
 export const BONUSES = [
-  ["Split ball", "Adds another ball."],
-  ["Nine balls", "Adds nine balls, up to 100 at once."],
+  ["Split balls", "Doubles the balls in play, up to 100."],
+  ["Tenfold balls", "Adds nine copies of each ball, up to 100 at once."],
   ["Wider bat", "Makes your bat wider."],
   ["Piercing ball", "Balls pass straight through bricks."],
   ["Descending wall", "Moves the wall closer to your bat."],
@@ -62,14 +62,42 @@ export const BONUSES = [
   ["Lose a life", "Removes one life."],
   ["Extra life", "Adds one life."],
   ["Chain reaction", "Detonates the explosive bricks."],
-  ["Rain", "Showers the wall with shots and reveals hidden bricks."],
+  ["Rain", "Reveals hidden bricks under an animated rain shower."],
   ["Next level", "Awards 1,000 points and clears the level."],
   ["5,000 points", "Adds 5,000 points."],
   ["Lose 5,000", "Removes 5,000 points."],
 ] as const;
+export const BONUS_WEIGHTS = [
+  15, 15, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 15, 1, 7, 7, 1, 7, 7,
+] as const;
+export function bonusFromRoll(random: number, frequency = 5): number | null {
+  if (frequency <= 0) return null;
+  const denominator = (17 - clamp(Math.round(frequency), 1, 9)) * 100;
+  const value = clamp(random, 0, 1 - Number.EPSILON) * denominator;
+  const floor = Math.floor(value);
+  let draw = value - floor === 0.5 ? floor + (floor % 2) : Math.round(value);
+  if (draw > 165) return null;
+  for (let type = 0; type < BONUS_WEIGHTS.length; type++) {
+    draw -= BONUS_WEIGHTS[type];
+    if (draw < 0) return type === 19 && denominator < 1200 ? null : type;
+  }
+  return null;
+}
 export const BAD_BONUSES = new Set([4, 10, 12, 13, 15, 21]);
 export type GameEvent =
-  "bounce" | "brick" | "bonus" | "bad" | "lost" | "fire" | "clear" | "explode";
+  | `bonus:${number}`
+  | "stickyBounce"
+  | "ballLost"
+  | "reveal"
+  | "chain"
+  | "bounce"
+  | "brick"
+  | "bonus"
+  | "bad"
+  | "lost"
+  | "fire"
+  | "clear"
+  | "explode";
 export const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
@@ -87,8 +115,8 @@ export class Game {
   score = 0;
   lives = 3;
   paddleX = WIDTH / 2;
-  paddleWidth = 107;
-  radius = 7.5;
+  paddleWidth = 87;
+  radius = 5;
   wallOffset = 0;
   revision = 0;
   time = 0;
@@ -98,7 +126,7 @@ export class Game {
   stickyTime = 0;
   rainTime = 0;
   shootCooldown = 0;
-  rainCooldown = 0;
+  bonusCooldown = 0;
   firing = false;
   message = "";
   messageTime = 0;
@@ -136,11 +164,12 @@ export class Game {
   }
 
   resetPowers() {
-    this.paddleWidth = 107;
-    this.radius = 7.5;
+    this.paddleWidth = 87;
+    this.radius = 5;
     this.mode = "normal";
     this.modeTime = this.laserTime = this.stickyTime = this.rainTime = 0;
-    this.shootCooldown = this.rainCooldown = 0;
+    this.shootCooldown = 0;
+    this.bonusCooldown = 40 / 60;
     this.firing = false;
   }
 
@@ -236,11 +265,7 @@ export class Game {
       this.shootCooldown = 0.15;
       this.emit("fire");
     }
-    this.rainCooldown -= dt;
-    if (this.rainTime > 0 && this.rainCooldown <= 0) {
-      this.shots.push({ x: this.random() * WIDTH, y: PADDLE_Y });
-      this.rainCooldown = 0.035;
-    }
+    this.bonusCooldown = Math.max(0, this.bonusCooldown - dt);
     for (const ball of this.balls) {
       if (ball.stuck) continue;
       const speed = Math.hypot(ball.vx, ball.vy);
@@ -257,6 +282,8 @@ export class Game {
         if (ball.stuck || ball.y > HEIGHT + this.radius || !this.running) break;
       }
     }
+    if (this.balls.some((b) => b.y > HEIGHT + this.radius))
+      this.emit("ballLost");
     this.balls = this.balls.filter((b) => b.y <= HEIGHT + this.radius);
     for (const shot of this.shots) {
       const oldY = shot.y;
@@ -345,7 +372,7 @@ export class Game {
         ball.stuck = true;
         ball.offset = ball.x - this.paddleX;
       }
-      this.emit("bounce");
+      this.emit(this.stickyTime > 0 ? "stickyBounce" : "bounce");
       return;
     }
     const x0 = clamp(Math.floor((ball.x - r) / BW), 0, COLS - 1),
@@ -392,25 +419,33 @@ export class Game {
     if (!value) return;
     const x = (index % COLS) * BW + BW / 2,
       y = Math.floor(index / COLS) * BH + this.wallOffset + BH / 2;
-    if (value === -1 && !force) this.cells[index] = 1;
-    else this.cells[index] = force || value < 0 ? 0 : value - 1;
+    if (value === -1 && !force) {
+      this.cells[index] = 1;
+      this.emit("reveal");
+    } else this.cells[index] = force || value < 0 ? 0 : value - 1;
     this.revision++;
     if (this.cells[index] === 0) {
       this.score += 10;
       this.effects.push({ x, y, age: 0, type: "break" });
       this.emit("brick");
-      if (
-        this.drops.length < this.settings.maxBonuses &&
-        this.random() < this.settings.bonusRate
-      ) {
-        const type = Math.floor(this.random() * BONUSES.length);
-        if (!this.drops.some((d) => d.type === type))
-          this.drops.push({ x: x - 16.5, y, type });
-      }
+      this.tryDrop(x, y);
       if (value === -2) this.chain(index);
     } else {
       this.effects.push({ x, y, age: 0, type: "hit" });
       this.emit("bounce");
+    }
+  }
+
+  private tryDrop(x: number, y: number) {
+    if (
+      this.bonusCooldown === 0 &&
+      this.drops.length < this.settings.maxBonuses
+    ) {
+      const type = bonusFromRoll(this.random(), this.settings.bonusFrequency);
+      if (type !== null && this.bonusEligible(type)) {
+        this.drops.push({ x: x - 16.5, y, type });
+        this.bonusCooldown = 40 / 60;
+      }
     }
   }
 
@@ -426,6 +461,10 @@ export class Game {
           this.cells[neighbor] = 0;
           this.score += 15;
           this.revision++;
+          this.tryDrop(
+            (neighbor % COLS) * BW + BW / 2,
+            Math.floor(neighbor / COLS) * BH + this.wallOffset + BH / 2,
+          );
           this.effects.push({
             x: (neighbor % COLS) * BW + BW / 2,
             y: Math.floor(neighbor / COLS) * BH + this.wallOffset + BH / 2,
@@ -434,7 +473,7 @@ export class Game {
           });
         }
     }
-    this.emit("explode");
+    this.emit("chain");
   }
 
   private neighbors(index: number) {
@@ -463,18 +502,65 @@ export class Game {
     }
   }
   private addBalls(count: number) {
-    const source = this.balls.find((b) => !b.stuck) ?? this.balls[0];
-    if (!source) return;
-    for (let i = 0; i < count && this.balls.length < MAX_BALLS; i++) {
-      const angle = (this.random() * 1.6 - 0.8) * Math.PI;
-      this.balls.push({
-        x: source.x,
-        y: source.y,
-        vx: Math.sin(angle) * this.settings.speed,
-        vy: -Math.abs(Math.cos(angle)) * this.settings.speed - 30,
-        stuck: false,
-        offset: 0,
-      });
+    const sources = [...this.balls];
+    for (const source of sources) {
+      const speed = Math.hypot(source.vx, source.vy) || this.settings.speed;
+      const direction = Math.atan2(source.vy, source.vx);
+      for (let i = 0; i < count && this.balls.length < MAX_BALLS; i++) {
+        const angle =
+          count === 9
+            ? direction - ((i + 1) * Math.PI) / 5
+            : this.random() * Math.PI * 2;
+        this.balls.push({
+          x: source.x,
+          y: source.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          stuck: false,
+          offset: 0,
+        });
+      }
+    }
+  }
+  bonusEligible(type: number) {
+    if (this.drops.some((d) => d.type === type)) return false;
+    switch (type) {
+      case 0:
+        return this.balls.length <= 50 && !this.drops.some((d) => d.type === 1);
+      case 1:
+        return this.balls.length <= 10 && !this.drops.some((d) => d.type === 0);
+      case 2:
+        return this.paddleWidth < 247;
+      case 3:
+        return this.mode !== "pierce";
+      case 5:
+        return this.mode !== "explode";
+      case 6:
+        return this.mode !== "power" && this.cells.some((c) => c > 1);
+      case 7:
+        return this.laserTime === 0;
+      case 8:
+        return !this.effects.some((e) => e.type === "lightning");
+      case 9:
+        return this.stickyTime === 0;
+      case 10:
+        return this.paddleWidth > 27;
+      case 11:
+        return this.radius < 7.5;
+      case 12:
+        return this.radius > 2.5;
+      case 13:
+        return this.balls.some((b) => !b.stuck && Math.hypot(b.vx, b.vy) < 779);
+      case 14:
+        return this.balls.some((b) => !b.stuck && Math.hypot(b.vx, b.vy) > 241);
+      case 16:
+        return this.lives < 100;
+      case 17:
+        return this.cells.includes(-2);
+      case 18:
+        return this.rainTime === 0 && this.cells.includes(-1);
+      default:
+        return type >= 0 && type < BONUSES.length;
     }
   }
   applyBonus(type: number) {
@@ -482,7 +568,7 @@ export class Game {
     this.score += type === 19 || type >= 20 ? 0 : 20;
     this.message = BONUSES[type][0];
     this.messageTime = 2.2;
-    this.emit(BAD_BONUSES.has(type) ? "bad" : "bonus");
+    this.emit(`bonus:${type}`);
     switch (type) {
       case 0:
         this.addBalls(1);
@@ -491,7 +577,7 @@ export class Game {
         this.addBalls(9);
         break;
       case 2:
-        this.paddleWidth = Math.min(267, this.paddleWidth + 20);
+        this.paddleWidth = Math.min(247, this.paddleWidth + 20);
         break;
       case 3:
         this.mode = "pierce";
@@ -541,7 +627,7 @@ export class Game {
         this.paddleWidth = Math.max(27, this.paddleWidth - 20);
         break;
       case 11:
-        this.radius = Math.min(12.5, this.radius + 2.5);
+        this.radius = Math.min(7.5, this.radius + 2.5);
         break;
       case 12:
         this.radius = Math.max(2.5, this.radius - 2.5);
@@ -567,7 +653,7 @@ export class Game {
           if (this.cells[i] === -2) this.hit(i, true);
         break;
       case 18:
-        this.rainTime = 12;
+        this.rainTime = 800 / 60;
         this.reveal();
         break;
       case 19:

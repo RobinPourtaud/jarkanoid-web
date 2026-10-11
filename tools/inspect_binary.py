@@ -33,6 +33,12 @@ for inst in cs.disasm(data(start, 0x473000 - start), start):
 assembly = '\n'.join(lines)
 (ROOT / 'research/disassembly.txt').write_text(assembly)
 addresses = {
+    'initial_settings': 0x40e030, 'settings_conversion': 0x40f150,
+    'choose_bonus': 0x429200, 'reset_powers': 0x42d230,
+    'scene_object_transform': 0x436fb0, 'load_scenes': 0x43a3c0,
+    'scene_player': 0x43f1f0, 'scene_read_command': 0x43fb50,
+    'scene_translation_x': 0x4401f0, 'load_sounds': 0x444a60,
+    'play_sounds': 0x442d70,
     'load_level': 0x417f40, 'bonus_dispatch': 0x4298a0,
     'destroy_brick': 0x42f270, 'damage_brick': 0x42fe20,
     'split': 0x430170, 'nine_balls': 0x430500,

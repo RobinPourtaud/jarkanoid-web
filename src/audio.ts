@@ -1,6 +1,7 @@
 import { Midi } from "@tonejs/midi";
 import { asset } from "./assets";
 import type { GameEvent } from "./engine";
+import { soundId } from "./sound-map";
 
 type Note = {
   time: number;
@@ -8,16 +9,6 @@ type Note = {
   midi: number;
   velocity: number;
   percussion: boolean;
-};
-const soundIds: Record<GameEvent, number> = {
-  bounce: 3,
-  brick: 7,
-  bonus: 12,
-  bad: 14,
-  lost: 2,
-  fire: 19,
-  clear: 1,
-  explode: 9,
 };
 export class Sound {
   private ctx?: AudioContext;
@@ -32,7 +23,7 @@ export class Sound {
   private startTime = 0;
   private sequence = 0;
   private musicKey = "";
-  private lastEffect = new Map<GameEvent, number>();
+  private lastEffect = new Map<number, number>();
   private timer: ReturnType<typeof setInterval>;
   muted = false;
   volume = 0.55;
@@ -47,7 +38,7 @@ export class Sound {
       this.master.connect(this.ctx.destination);
       this.musicGain = this.ctx.createGain();
       this.musicGain.connect(this.master);
-      this.musicGain.gain.value = 0.25;
+      this.musicGain.gain.value = this.musicEnabled ? 0.25 : 0;
       this.setVolume(this.volume);
     }
     if (this.ctx.state === "suspended") await this.ctx.resume();
@@ -65,11 +56,12 @@ export class Sound {
     if (this.musicGain) this.musicGain.gain.value = value ? 0.25 : 0;
   }
   async effect(event: GameEvent, pack: number) {
-    if (!this.ctx || this.muted) return;
+    const id = soundId(event);
+    if (!this.ctx || this.muted || !id) return;
     const time = this.ctx.currentTime;
-    if (time - (this.lastEffect.get(event) ?? -1) < 0.065) return;
-    this.lastEffect.set(event, time);
-    const key = asset(pack, `sound-${soundIds[event]}.mp3`);
+    if (time - (this.lastEffect.get(id) ?? -1) < 0.065) return;
+    this.lastEffect.set(id, time);
+    const key = asset(pack, `sound-${id}.mp3`);
     try {
       let buffer = this.buffers.get(key);
       if (!buffer) {
@@ -90,7 +82,15 @@ export class Sound {
     }
   }
   async track(pack: number, filename: string | null) {
-    if (!this.ctx || !filename) return;
+    if (!filename) {
+      this.sequence++;
+      this.music?.stop();
+      this.music = undefined;
+      this.notes = [];
+      this.musicKey = "";
+      return;
+    }
+    if (!this.ctx) return;
     const key = asset(pack, filename);
     if (key === this.musicKey) return;
     this.musicKey = key;
@@ -130,7 +130,7 @@ export class Sound {
       }
     } catch (error) {
       console.warn("Music unavailable", error);
-      this.musicKey = "";
+      if (sequence === this.sequence) this.musicKey = "";
     }
   }
   private schedule() {

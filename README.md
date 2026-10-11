@@ -1,6 +1,6 @@
 # Jarkanoid 3 — browser preservation port
 
-A playable TypeScript/Canvas port of Jérôme Barjot’s **Jarkanoid 3**, built by analyzing the original VB6 executable and extracting its resources. All **110 original levels** across three packs are available, with the original artwork, sprites, sound effects, and music.
+A playable TypeScript/Canvas/WebGL port of Jérôme Barjot’s **Jarkanoid 3**, built by analyzing the original VB6 executable and extracting its resources. All **110 original levels** across three packs are available, with the original artwork, sprites, sound effects, and music. A WebGL player also brings back **nine intro/end sequences and 56 original 3D models**, using recovered transform scripts.
 
 The engine is reimplemented; this is **not a complete decompilation of the original source** or an exact physics replica. See [reverse engineering notes](docs/reverse-engineering.md) for evidence, recovered formats, and the remaining differences.
 
@@ -25,8 +25,9 @@ On Linux, install the corresponding `innoextract`, `ffmpeg`, and `libopenmpt0` p
 - Mouse, touch, or **← / → / A / D**: move the bat.
 - Click or **Space**: launch/release a ball; hold to fire with the laser bonus.
 - **P / Escape**: pause. **M**: mute. **F**: fullscreen.
-- Choose a level to explore any of the 110 original walls.
-- Settings control ball speed, acceleration, bonus frequency, falling speed, bonus count, volume, and music.
+- Choose a level to explore any of the 110 original walls. Game Over restarts at level 1 of the current pack.
+- **Original 3D scenes** opens the recovered cinematic player, with pack/scene selection, pause, replay, and a seekable timeline.
+- Settings control ball speed, acceleration, bonus frequency, falling speed, bonus count, volume, and music. Bonus frequency uses the native 1–9 scale (default 5); 0 disables drops. Types use the recovered unequal weights and eligibility rules, with a default limit of three falling bonuses.
 - Best score, selected level, completed levels, and settings persist in local storage. A page reload starts a fresh session on the selected level; in-flight game state is not saved.
 
 ## Build and verify
@@ -41,12 +42,14 @@ npm run test:browser
 
 `dist/` is a standalone static site with locally hosted assets and fonts. Serve it over HTTP; opening `index.html` via `file://` does not support module/data loading. For hosting in a subdirectory, use `npm run build -- --base=/your-path/`.
 
-Tests cover all 110 level grids, collisions at high speed, fixed timestep movement, paddle angles, multiball/life handling, all bonuses, explosive chains, hidden bricks, progression, browser controls, settings persistence, asset decoding, and a narrow viewport. Browser tests run one worker to limit memory usage. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to reuse an existing Chromium executable.
+Tests cover all 110 level grids, collisions at high speed, fixed timestep movement, paddle angles, multiball/life handling, all bonuses, explosive chains, hidden bricks, progression, browser controls, settings persistence, asset decoding, a narrow viewport, all nine 3D scenes with actual framebuffer checks, native bonus draw ranges, settings migration, and Game Over progression. Browser tests run one worker to limit memory usage. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to reuse an existing Chromium executable.
 
 ## Project
 
 - `src/engine.ts`: deterministic game model and fixed timestep physics, independent of the DOM.
 - `src/renderer.ts`: Canvas renderer using extracted sprite atlases and level artwork.
+- `src/cinematics.ts`: WebGL playback of recovered D3D meshes and J3S scripts.
+- `src/sound-map.ts`: bonus and gameplay sound IDs traced to native handlers.
 - `src/audio.ts`: original sampled/tracker audio and MIDI note playback.
 - `src/main.ts`: browser controls, level browser, settings, and session UI.
 - `tools/`: reproducible extraction, audio conversion, and native binary analysis.

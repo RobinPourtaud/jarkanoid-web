@@ -4,6 +4,7 @@ export type Pack = {
   name: string;
   levels: number;
   music: (string | null)[];
+  sceneMusic: Record<"intro" | "outro" | "youwon", string | null>;
 };
 export type Manifest = { packs: Pack[]; sha256: Record<string, string> };
 export type Atlas = Record<string, [number, number, number, number]>;

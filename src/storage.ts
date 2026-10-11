@@ -1,5 +1,6 @@
 import { defaults, clamp, type Settings } from "./engine";
 export type Save = {
+  rulesVersion: number;
   pack: number;
   level: number;
   best: number;
@@ -8,6 +9,7 @@ export type Save = {
   muted: boolean;
 };
 export const newSave = (): Save => ({
+  rulesVersion: 2,
   pack: 0,
   level: 1,
   best: 0,
@@ -35,7 +37,7 @@ export function readSave(): Save {
       const ranges = {
         speed: [200, 700],
         acceleration: [0, 15],
-        bonusRate: [0, 0.5],
+        bonusFrequency: [0, 9],
         bonusSpeed: [50, 220],
         maxBonuses: [1, 22],
         volume: [0, 1],
@@ -47,6 +49,24 @@ export function readSave(): Save {
             ranges[key][0],
             ranges[key][1],
           );
+      if (
+        !Number.isFinite(s.settings.bonusFrequency) &&
+        Number.isFinite(s.settings.bonusRate)
+      ) {
+        save.settings.bonusFrequency =
+          s.settings.bonusRate === 0
+            ? 0
+            : s.settings.bonusRate === 0.16
+              ? 5
+              : clamp(
+                  Math.round(17 - 165.5 / (s.settings.bonusRate * 100)),
+                  1,
+                  9,
+                );
+      }
+      if (!s.rulesVersion && s.settings.maxBonuses === 6)
+        save.settings.maxBonuses = 3;
+      save.settings.bonusFrequency = Math.round(save.settings.bonusFrequency);
       save.settings.maxBonuses = Math.round(save.settings.maxBonuses);
       if (typeof s.settings.music === "boolean")
         save.settings.music = s.settings.music;

@@ -70,6 +70,11 @@ export class Renderer {
       this.revision = game.revision;
     }
     c.drawImage(this.wall, 0, 0);
+    if (game.rainTime > 0) {
+      const rain = (Math.floor((800 / 60 - game.rainTime) * 15) % 10) + 1;
+      for (let y = 0; y < HEIGHT; y += 256)
+        for (let x = 0; x < WIDTH; x += 320) this.sprite(`RAIN/${rain}`, x, y);
+    }
     const frame = (Math.floor(game.time * 24) % 36) + 1;
     if (game.laserTime > 0) {
       this.sprite(
@@ -84,19 +89,19 @@ export class Renderer {
       );
     }
     this.sprite(
-      `NORMAL_BAT_LEFT/${frame}`,
+      `${game.stickyTime > 0 ? "GLUE" : "NORMAL"}_BAT_LEFT/${frame}`,
       game.paddleX - game.paddleWidth / 2,
       PADDLE_Y,
     );
     this.sprite(
-      `NORMAL_BAT_CENTER/${frame}`,
+      `${game.stickyTime > 0 ? "GLUE" : "NORMAL"}_BAT_CENTER/${frame}`,
       game.paddleX - game.paddleWidth / 2 + 9,
       PADDLE_Y,
       game.paddleWidth - 18,
       21,
     );
     this.sprite(
-      `NORMAL_BAT_RIGHT/${frame}`,
+      `${game.stickyTime > 0 ? "GLUE" : "NORMAL"}_BAT_RIGHT/${frame}`,
       game.paddleX + game.paddleWidth / 2 - 9,
       PADDLE_Y,
     );
