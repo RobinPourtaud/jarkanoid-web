@@ -997,6 +997,39 @@ dialog::backdrop {
 .touch-controls {
   display: none;
 }
+#offline-options {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+#offline-options h3 {
+  font-size: 20px;
+  margin: 0 0 10px;
+}
+#offline-options p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+#offline-options #offline-status {
+  color: var(--acid);
+}
+#offline-options progress {
+  width: 100%;
+  accent-color: var(--acid);
+  margin-bottom: 12px;
+}
+.offline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.offline-actions button {
+  min-height: 44px;
+}
+#offline-options .offline-hint {
+  font-size: 11px;
+}
 .screen canvas {
   aspect-ratio: 4 / 3;
 }

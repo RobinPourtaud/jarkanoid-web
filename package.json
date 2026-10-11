@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node tools/build_offline.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "tsx --test tests/*.test.ts",
     "setup:assets": "python3 tools/setup_assets.py",
     "test:browser": "playwright test",
+    "test:offline": "npm run build && playwright test --config playwright.offline.config.ts",
     "analyze": ".venv/bin/python tools/inspect_binary.py"
   },
   "devDependencies": {

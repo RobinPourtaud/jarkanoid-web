@@ -1,5 +1,6 @@
 import "./style.css";
 import { makerCredit } from "./branding";
+import { offlineOptions, mountOfflineOptions } from "./offline";
 import {
   Game,
   WIDTH,
@@ -331,6 +332,8 @@ $("#settings").onclick = () => {
     "Make it your game.",
     `<p class="dialog-intro">Tune the pace, the risk, and the reward. Bonus frequency uses the original 1–9 scale; 0 disables drops. Settings save automatically.</p><div class="settings-list">${sliders.map(([key, label, min, max, step, unit]) => `<label class="setting"><span>${label}<output id="value-${key}"></output></span><input type="range" id="setting-${key}" min="${min}" max="${max}" step="${step}" value="${game.settings[key]}" data-unit="${unit}"></label>`).join("")}<label class="check-setting">Original music <input type="checkbox" id="music-setting" ${game.settings.music ? "checked" : ""}></label></div><button class="wide" id="restore">Restore default settings</button>`,
   );
+  $("#dialog-content").insertAdjacentHTML("beforeend", offlineOptions);
+  mountOfflineOptions();
   for (const [key, , , , , unit] of sliders) {
     const input = $<HTMLInputElement>(`#setting-${key}`);
     const show = () => {

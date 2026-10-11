@@ -73,6 +73,14 @@ Fonts: Barlow Condensed, DM Sans, IBM Plex Mono, and Quicksand, distributed unde
 
 Between levels, the recovered squeeze-and-mirror transition now plays automatically before the next serve. Score and lives carry over; pack completion keeps the next-pack choice.
 
+## Offline play
+
+Open **Game settings → Play offline → Download for offline play** while connected. Keep the game open until it says **Ready offline**. The download is about 54 MB and includes all 110 levels, music, sounds, fonts, and 3D scenes. You can then reopen the same address without a connection. On iPhone, use Safari’s **Share → Add to Home Screen**, open that icon, and download from its settings before going offline.
+
+**Refresh offline download** saves the current release. An interrupted download can be retried; the previous complete download stays available until its replacement finishes. **Remove download** frees the offline files without removing scores or settings. Browser storage can be evicted when space is low; persistent storage is requested where supported. Offline mode does not save a ball in flight: reopening still starts a fresh session on the selected level.
+
+`npm run build` generates a versioned manifest with sizes and SHA-256 hashes of every shipped file. The opt-in service worker verifies files before caching them and only marks the bundle ready once it is complete. Online navigation loads the current site; offline navigation falls back to the downloaded release. Run `npm run test:offline` for production-build tests of disconnected reopening, every cached file, other packs, cinematics, interrupted downloads, cache eviction, and removal.
+
 ## Hosting
 
 Cloudflare serves the static `dist/` directory at `jarkanoid.pourtaud.dev`. Wrangler is a development/deployment dependency only; it is never downloaded or needed by players. No Worker application code or backend runs the game. Keep extracted game assets local and run asset setup before building a new checkout.
