@@ -150,7 +150,9 @@ test("explosive cells propagate diagonally but do not wrap across rows", () => {
     [COLS + 2, -2],
     [COLS - 1, -2],
   ]);
+  g.launch();
   g.hit(0);
+  advance(g, 0.2);
   assert.equal(g.cells[COLS + 1], 0);
   assert.equal(g.cells[COLS + 2], 0);
   assert.equal(g.cells[COLS - 1], -2);

@@ -35,6 +35,14 @@ assembly = '\n'.join(lines)
 addresses = {
     'initial_settings': 0x40e030, 'settings_conversion': 0x40f150,
     'choose_bonus': 0x429200, 'reset_powers': 0x42d230,
+    'game_loop': 0x418890, 'render_game': 0x419160,
+    'move_ball': 0x4176e0, 'paddle_collision': 0x419e40,
+    'accelerate_ball': 0x41c1c0, 'bonus_gravity': 0x41bd60,
+    'bonus_side_bounce': 0x41b8c0, 'bonus_top_bounce': 0x41bab0,
+    'move_bullets': 0x431a10, 'lightning_strike': 0x432260,
+    'brick_effects': 0x42dee0, 'animate_sprites': 0x42ea80,
+    'finish_descent': 0x42edf0, 'explode_neighbors': 0x42f650,
+    'explosion_damage': 0x42fab0, 'mouse_and_laser': 0x40f830,
     'scene_object_transform': 0x436fb0, 'load_scenes': 0x43a3c0,
     'scene_player': 0x43f1f0, 'scene_read_command': 0x43fb50,
     'scene_translation_x': 0x4401f0, 'load_sounds': 0x444a60,
@@ -60,6 +68,20 @@ functions = {int(f[:8], 16): f for f in re.split(r'(?=^\w+ push ebp$)', assembly
 for label, address in addresses.items():
     if address not in functions: raise ValueError(f'Function {label} not found at {address:x}')
     (folder / f'{label}.asm').write_text(functions[address])
-report = {'binary_sha256': hashlib.sha256(raw).hexdigest(), 'vb_header': hex(vb), 'module_count': count, 'modules': result, 'identified_functions': {k:hex(v) for k,v in addresses.items()}}
+constants = {
+    'speed_setting_offset': (0x401230, 'd'),
+    'acceleration_divisor': (0x401228, 'd'),
+    'bonus_gravity_divisor': (0x401220, 'f'),
+    'bonus_velocity_divisor': (0x40121c, 'f'),
+    'paddle_angle_intercept_times_ten': (0x401530, 'd'),
+    'paddle_angle_slope_times_ten': (0x401520, 'd'),
+    'paddle_angle_divisor': (0x401528, 'd'),
+    'bullet_pixels_per_update': (0x402560, 'f'),
+    'lightning_draw_maximum': (0x4014f4, 'f'),
+    'lightning_depth_divisor': (0x402590, 'd'),
+    'lightning_acceleration_multiplier': (0x402210, 'd'),
+}
+recovered_constants = {key: {'address': hex(address), 'value': struct.unpack('<'+fmt, data(address, struct.calcsize(fmt)))[0]} for key, (address, fmt) in constants.items()}
+report = {'constants': recovered_constants, 'binary_sha256': hashlib.sha256(raw).hexdigest(), 'vb_header': hex(vb), 'module_count': count, 'modules': result, 'identified_functions': {k:hex(v) for k,v in addresses.items()}}
 (ROOT / 'research/binary-analysis.json').write_text(json.dumps(report, indent=2))
 print(f'Recovered {count} module descriptors, {len(addresses)} identified function disassemblies, and the full native code listing.')

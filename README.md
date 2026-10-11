@@ -27,7 +27,7 @@ On Linux, install the corresponding `innoextract`, `ffmpeg`, and `libopenmpt0` p
 - **P / Escape**: pause. **M**: mute. **F**: fullscreen.
 - Choose a level to explore any of the 110 original walls. Game Over restarts at level 1 of the current pack.
 - **Original 3D scenes** opens the recovered cinematic player, with pack/scene selection, pause, replay, and a seekable timeline.
-- Settings control ball speed, acceleration, bonus frequency, falling speed, bonus count, volume, and music. Bonus frequency uses the native 1–9 scale (default 5); 0 disables drops. Types use the recovered unequal weights and eligibility rules, with a default limit of three falling bonuses.
+- Settings control starting/maximum ball speed, speed gained per collision, bonus frequency, falling-object gravity, bonus count, volume, and music. Bonus frequency uses the native 1–9 scale (default 5); 0 disables drops. Types use the recovered unequal weights and eligibility rules, with a default limit of three falling bonuses. Drops inherit impact velocity; lightning targets one brick; rain reveals bricks temporarily; lasers damage armor one hit at a time. The default serve is slower than the initial port and speeds up on collisions, following the recovered rules.
 - Best score, selected level, completed levels, and settings persist in local storage. A page reload starts a fresh session on the selected level; in-flight game state is not saved.
 
 ## Build and verify
@@ -42,7 +42,7 @@ npm run test:browser
 
 `dist/` is a standalone static site with locally hosted assets and fonts. Serve it over HTTP; opening `index.html` via `file://` does not support module/data loading. For hosting in a subdirectory, use `npm run build -- --base=/your-path/`.
 
-Tests cover all 110 level grids, collisions at high speed, fixed timestep movement, paddle angles, multiball/life handling, all bonuses, explosive chains, hidden bricks, progression, browser controls, settings persistence, asset decoding, a narrow viewport, all nine 3D scenes with actual framebuffer checks, native bonus draw ranges, settings migration, and Game Over progression. Browser tests run one worker to limit memory usage. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to reuse an existing Chromium executable.
+Tests cover all 110 level grids, collisions at high speed, fixed timestep movement, paddle angles, multiball/life handling, all bonuses, explosive chains, hidden bricks, progression, browser controls, settings persistence, asset decoding, a narrow viewport, all nine 3D scenes with actual framebuffer checks, native bonus draw ranges, collision acceleration, projectile gravity, timed chains, rain restoration, sticky release, settings migration, and Game Over progression. Descended brick pixels are compared directly with their source artwork. Browser tests run one worker to limit memory usage. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to reuse an existing Chromium executable.
 
 ## Project
 

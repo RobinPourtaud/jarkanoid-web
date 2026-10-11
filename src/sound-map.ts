@@ -10,8 +10,10 @@ export function soundId(event: GameEvent): number {
     (
       {
         bounce: 13,
+        wallBounce: 16,
+        brickHit: 15,
         stickyBounce: 14,
-        brick: 0,
+        brick: 15,
         bonus: 3,
         bad: 27,
         ballLost: 16,

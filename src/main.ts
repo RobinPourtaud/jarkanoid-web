@@ -198,8 +198,10 @@ function updateUI() {
       `${manifest.packs[pack].name} · Level ${level} · ${game.phase}`;
 }
 function openDialog(title: string, content: string) {
-  menuPaused = game.running;
-  if (menuPaused) game.pause();
+  if (!dialog.open) {
+    menuPaused = game.running;
+    if (menuPaused) game.pause();
+  }
   sound.pause(true);
   keys.clear();
   $("#dialog-title").textContent = title;
@@ -279,10 +281,11 @@ $("#levels").onclick = () => {
 };
 $("#settings").onclick = () => {
   const sliders = [
-    ["speed", "Starting ball speed", 200, 700, 10, "px/s"],
-    ["acceleration", "Ball acceleration", 0, 15, 1, "px/s²"],
+    ["speed", "Starting / slow ball speed", 180, 1140, 10, "px/s"],
+    ["maxSpeed", "Maximum / fast ball speed", 180, 1140, 10, "px/s"],
+    ["acceleration", "Speed gained per collision", 0, 15, 1, "px/s"],
     ["bonusFrequency", "Bonus frequency (0 = off)", 0, 9, 1, "/ 9"],
-    ["bonusSpeed", "Falling bonus speed", 50, 220, 5, "px/s"],
+    ["bonusGravity", "Falling bonus gravity", 216, 648, 36, "px/s²"],
     ["maxBonuses", "Bonuses on screen", 1, 22, 1, ""],
     ["volume", "Audio volume", 0, 1, 0.05, "%"],
   ] as const;
@@ -298,6 +301,20 @@ $("#settings").onclick = () => {
     };
     input.oninput = () => {
       game.settings[key] = Number(input.value);
+      if (key === "speed" && game.settings.maxSpeed < game.settings.speed) {
+        game.settings.maxSpeed = game.settings.speed;
+        $<HTMLInputElement>("#setting-maxSpeed").value = String(
+          game.settings.maxSpeed,
+        );
+        $("#value-maxSpeed").textContent = `${game.settings.maxSpeed} px/s`;
+      }
+      if (key === "maxSpeed" && game.settings.speed > game.settings.maxSpeed) {
+        game.settings.speed = game.settings.maxSpeed;
+        $<HTMLInputElement>("#setting-speed").value = String(
+          game.settings.speed,
+        );
+        $("#value-speed").textContent = `${game.settings.speed} px/s`;
+      }
       sound.setVolume(game.settings.volume);
       store();
       show();

@@ -19,7 +19,7 @@ test("launch, move, pause, resume, and run original audio without browser errors
   );
   await expect
     .poll(() => page.evaluate(() => (window as any).__jarkanoid.game.paddleX))
-    .toBeCloseTo(1023 * 0.75, 0);
+    .toBeCloseTo(1024 * 0.75, 0);
   await page.keyboard.press("p");
   await expect(
     page.getByRole("heading", { name: "On a break." }),
@@ -253,4 +253,91 @@ test("old default bonus settings migrate to native defaults and zero frequency p
   await page.getByRole("button", { name: "Launch ball" }).waitFor();
   await page.getByRole("button", { name: "Game settings" }).click();
   await expect(page.locator("#setting-bonusFrequency")).toHaveValue("0");
+});
+
+test("descended bricks retain their original pixels and recovered combat sprites render", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  const result = await page.evaluate(() => {
+    const { game: g, renderer: r } = (window as any).__jarkanoid;
+    const cells = Array(1054).fill(0);
+    cells[0] = 1;
+    cells[2] = 1;
+    g.load({ number: 1, cells });
+    g.applyBonus(4);
+    g.pause();
+    r.render(g);
+    const source = document.createElement("canvas");
+    source.width = 33;
+    source.height = 20;
+    const c = source.getContext("2d")!;
+    c.drawImage(r.art.bricks, 0, 0, 33, 20, 0, 0, 33, 20);
+    const original = Array.from(c.getImageData(0, 0, 33, 20).data);
+    const moved = Array.from(
+      r.canvas.getContext("2d").getImageData(0, 20, 33, 20).data,
+    );
+    g.lightning = { index: 31, age: 0.3 };
+    g.shots = [{ x: 500, y: 500 }];
+    r.render(g);
+    return {
+      original,
+      moved,
+      lightningSprite: r.art.atlas["ORAGE/1"],
+      bulletSprite: r.art.atlas["BULLET/31"],
+    };
+  });
+  expect(result.moved).toEqual(result.original);
+  expect(result.lightningSprite.slice(2)).toEqual([17, 335]);
+  expect(result.bulletSprite.slice(2)).toEqual([1, 10]);
+});
+
+test("native physics migration and linked speed controls survive reload", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("physics-fixture")) return;
+    sessionStorage.setItem("physics-fixture", "1");
+    localStorage.setItem(
+      "jarkanoid3-v1",
+      JSON.stringify({
+        rulesVersion: 2,
+        best: 9000,
+        settings: { speed: 390, acceleration: 4, bonusSpeed: 105 },
+      }),
+    );
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  await page.getByRole("button", { name: "Game settings" }).click();
+  await expect(page.locator("#setting-speed")).toHaveValue("180");
+  await expect(page.locator("#setting-maxSpeed")).toHaveValue("780");
+  await expect(page.locator("#setting-bonusGravity")).toHaveValue("360");
+  await page.locator("#setting-speed").fill("900");
+  await expect(page.locator("#setting-maxSpeed")).toHaveValue("900");
+  await page.locator("#setting-maxSpeed").fill("600");
+  await expect(page.locator("#setting-speed")).toHaveValue("600");
+  await page.reload();
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  const saved = await page.evaluate(() => ({
+    settings: (window as any).__jarkanoid.game.settings,
+    best: JSON.parse(localStorage.getItem("jarkanoid3-v1")!).best,
+  }));
+  expect(saved.settings.speed).toBe(600);
+  expect(saved.settings.maxSpeed).toBe(600);
+  expect(saved.best).toBe(9000);
+});
+
+test("restoring settings resumes a playing game after closing the dialog", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).click();
+  await page.getByRole("button", { name: "Game settings" }).click();
+  await page.getByRole("button", { name: "Restore default settings" }).click();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  expect(
+    await page.evaluate(() => (window as any).__jarkanoid.game.phase),
+  ).toBe("playing");
 });

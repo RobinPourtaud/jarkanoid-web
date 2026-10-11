@@ -30,7 +30,7 @@ The loader at `0x417f40` loops through index `0x41d` inclusive, reads a two-byte
 | `-1`          | Hidden brick; contact reveals it with one hit remaining               |
 | `-2`          | Explosive cell; destruction can propagate to adjacent explosive cells |
 
-At `0x42fe20`, a `-1` cell becomes `2` and is decremented to `1`. A `-2` cell becomes `1`, is marked for explosion, and is decremented to `0`. In `0x42dee0`, the explosion pass marks neighboring `-2` cells, including diagonals. The hidden-brick helper at `0x448430` reveals hidden cells when the remaining wall contains only hidden bricks. The port uses an explicit queue for explosive chains instead of frame-by-frame native bookkeeping.
+At `0x42fe20`, a `-1` cell becomes `2` and is decremented to `1`. A `-2` cell becomes `1`, is marked for explosion, and is decremented to `0`. In `0x42dee0`, the explosion pass marks neighboring `-2` cells, including diagonals. The hidden-brick helper at `0x448430` reveals hidden cells when the remaining wall contains only hidden bricks. The port now preserves the two-stage chain bookkeeping: flag neighbors, then destroy them on the following propagation pass.
 
 The recovered grid value sets and counts were checked across all 110 levels. Tests compare the loaded TypeScript cells with every extracted grid and decode all level and background images in Chromium.
 
@@ -52,30 +52,30 @@ Run `npm run analyze` after asset setup. It writes full native disassembly, the 
 
 The dispatcher at `0x4298a0` tests bonus indices 0–21 and calls the following functions:
 
-| Index | Native address | Port behavior            |
-| ----- | -------------- | ------------------------ |
-| 0     | `0x430170`     | Double existing balls    |
-| 1     | `0x430500`     | Multiply ball count by 10|
-| 2     | `0x4308f0`     | Enlarge bat              |
-| 3     | `0x430ba0`     | Piercing balls           |
-| 4     | `0x430de0`     | Descend wall             |
-| 5     | `0x431320`     | Explosive balls          |
-| 6     | `0x431560`     | Power balls              |
-| 7     | `0x4317a0`     | Laser bat                |
-| 8     | `0x431ea0`     | Lightning                |
-| 9     | `0x4326a0`     | Sticky bat               |
-| 10    | `0x432b00`     | Shrink bat               |
-| 11    | `0x432db0`     | Enlarge balls            |
-| 12    | `0x433080`     | Shrink balls             |
-| 13    | `0x4332f0`     | Fast balls               |
-| 14    | `0x433550`     | Slow balls               |
-| 15    | `0x4337b0`     | Lose a life              |
-| 16    | `0x435210`     | Extra life               |
-| 17    | `0x435440`     | Detonate explosive cells |
-| 18    | `0x4359f0`     | Rain / reveal            |
-| 19    | `0x4444a0`     | Skip level, +1,000       |
-| 20    | `0x448660`     | +5,000                   |
-| 21    | `0x448880`     | −5,000                   |
+| Index | Native address | Port behavior             |
+| ----- | -------------- | ------------------------- |
+| 0     | `0x430170`     | Double existing balls     |
+| 1     | `0x430500`     | Multiply ball count by 10 |
+| 2     | `0x4308f0`     | Enlarge bat               |
+| 3     | `0x430ba0`     | Piercing balls            |
+| 4     | `0x430de0`     | Descend wall              |
+| 5     | `0x431320`     | Explosive balls           |
+| 6     | `0x431560`     | Power balls               |
+| 7     | `0x4317a0`     | Laser bat                 |
+| 8     | `0x431ea0`     | Lightning                 |
+| 9     | `0x4326a0`     | Sticky bat                |
+| 10    | `0x432b00`     | Shrink bat                |
+| 11    | `0x432db0`     | Enlarge balls             |
+| 12    | `0x433080`     | Shrink balls              |
+| 13    | `0x4332f0`     | Fast balls                |
+| 14    | `0x433550`     | Slow balls                |
+| 15    | `0x4337b0`     | Lose a life               |
+| 16    | `0x435210`     | Extra life                |
+| 17    | `0x435440`     | Detonate explosive cells  |
+| 18    | `0x4359f0`     | Rain / reveal             |
+| 19    | `0x4444a0`     | Skip level, +1,000        |
+| 20    | `0x448660`     | +5,000                    |
+| 21    | `0x448880`     | −5,000                    |
 
 Recovered score logic, expressed as pseudocode:
 
@@ -88,7 +88,7 @@ ordinary bonus handlers: score += 20
 score display logic clamps negative scores to zero
 ```
 
-The default life count is set to `3` at `0x40f1ad`. Ball storage is initialized for `100` balls at `0x42d417`. Several powers set a native counter to `0xe10` (3,600); translating those counters to 30 seconds is a port choice, not a verified measurement of the Windows game.
+The default life count is set to `3` at `0x40f1ad`. Ball storage is initialized for `100` balls at `0x42d417`. Several powers set a native counter to `0xe10` (3,600). The third pass traced two logic updates per rendered frame; at the browser’s normalized 60 rendered frames/second these counters last 30 seconds. Windows wall-clock speed has not been measured.
 
 ## Second recovery pass
 
@@ -98,28 +98,28 @@ The initial port selected each type uniformly with a separate 16% drop test. Tha
 
 The draw is `__vbaFpI2(Rnd * denominator)`, rounding to nearest even. Values above 165 produce no candidate. These are candidate probabilities per destroyed brick at default frequency 5, **before** eligibility, the screen limit, and cooldown:
 
-| Bonus index / category | Integer range | Default candidate chance |
-| --- | --- | --- |
-| 0, double balls | 0–14 | 14.5 / 1200 = 1.2083% |
-| 1, tenfold balls | 15–29 | 15 / 1200 = 1.25% |
-| 2–14, each type | successive 7-value ranges, 30–120 | 7 / 1200 = 0.5833% |
-| 15, lose life | 121–135 | 15 / 1200 = 1.25% |
-| 16, extra life | 136 | 1 / 1200 = 0.0833% |
-| 17, detonate | 137–143 | 7 / 1200 = 0.5833% |
-| 18, rain | 144–150 | 7 / 1200 = 0.5833% |
-| 19, next level | 151 | 1 / 1200 = 0.0833% |
-| 20, +5000 | 152–158 | 7 / 1200 = 0.5833% |
-| 21, −5000 | 159–165 | 7 / 1200 = 0.5833% |
+| Bonus index / category | Integer range                     | Default candidate chance |
+| ---------------------- | --------------------------------- | ------------------------ |
+| 0, double balls        | 0–14                              | 14.5 / 1200 = 1.2083%    |
+| 1, tenfold balls       | 15–29                             | 15 / 1200 = 1.25%        |
+| 2–14, each type        | successive 7-value ranges, 30–120 | 7 / 1200 = 0.5833%       |
+| 15, lose life          | 121–135                           | 15 / 1200 = 1.25%        |
+| 16, extra life         | 136                               | 1 / 1200 = 0.0833%       |
+| 17, detonate           | 137–143                           | 7 / 1200 = 0.5833%       |
+| 18, rain               | 144–150                           | 7 / 1200 = 0.5833%       |
+| 19, next level         | 151                               | 1 / 1200 = 0.0833%       |
+| 20, +5000              | 152–158                           | 7 / 1200 = 0.5833%       |
+| 21, −5000              | 159–165                           | 7 / 1200 = 0.5833%       |
 
 The zero endpoint has a half-width rounding interval. Total default candidate probability is **165.5/1200 = 13.7917%**. A rejected candidate is discarded, not rerolled or redistributed among eligible types. `0x429627` suppresses next-level drops when the denominator is below 1200 (frequency above 5).
 
-`0x40eae8` supplies a default screen limit of **3**, not the first port's 6. The counter at `0x474d7a` must reach **40 native updates** between drops (`0x42925d`, increment at `0x4189cd`). The browser maps that to 40/60 seconds; the Windows runtime's actual wall-clock cadence has not been measured. Tests enumerate every draw range and 120,000 stratified default draws, then check exclusions separately.
+`0x40eae8` supplies a default screen limit of **3**, not the first port's 6. The counter at `0x474d7a` must reach **40 native updates** between drops (`0x42925d`, increment at `0x4189cd`). The third pass corrects its browser mapping to **40/120 seconds**, because this counter advances on logic updates, twice per rendered frame. The Windows runtime's actual wall-clock cadence has not been measured. Tests enumerate every draw range and 120,000 stratified default draws, then check exclusions separately.
 
 Eligibility rejects duplicates on screen, mutually pending multiball types, already active powers, oversized/undersized bats or balls, power-ball drops without armored bricks, rain without hidden bricks, detonation without explosive bricks, and lives beyond 100. Multiball eligibility allows at most 50 existing balls for doubling and 10 for tenfold. The handlers snapshot existing balls: index 0 clones **each** original ball once; index 1 clones **each** nine times in 36-degree directions. Both preserve source speed. This corrects the first port's global +1/+9 behavior.
 
 Reset routine `0x42d471` sets ball **diameter 10**, with size steps 5 and eligible diameters 5/10/15. `0x42d47a` sets bat width **87**, with steps 20 and bounds 27/247. The source sprites are larger than the default rendered sizes. The browser now uses those recovered values.
 
-Rain handler `0x4359f0` reveals hidden bricks and enables the original ten-frame RAIN overlay. It does not create projectiles. The animation counter runs 20 cycles of ten frames, advancing every four updates (`0x42ec3a`); the browser maps this to 800/60 seconds. Native hidden-brick restoration bookkeeping remains incompletely understood, so the port retains revealed cells.
+Rain handler `0x4359f0` reveals hidden bricks and enables the original ten-frame RAIN overlay. It does not create projectiles. The animation counter runs 20 cycles of ten frames, advancing every four logic updates (`0x42ec3a`); the corrected mapping is **800/120 seconds**. The third pass also recovers restoration: `0x4757bc` marks temporarily revealed cells, and `0x42df54–0x42e07a` returns surviving marked cells to `-1`. Destroyed cells remain empty. The same cleanup occurs on life loss at `0x418df1–0x418f11`. Wall descent moves these markers with their bricks.
 
 ### Recovered sound routing
 
@@ -130,7 +130,7 @@ bonus index:  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21
 sound index:  3 21  7 22 19 23 20  9  1 24 17 25 26  8  4 27 12  2 11 33 34 35
 ```
 
-Normal/sticky bat contacts use 13/14, ball loss 16, laser firing 18, explosive-ball impacts 15, explosive chains 5, and revealing hidden bricks 6. These are now separately routed. MIDI synthesis remains approximate.
+Normal/sticky bat contacts use 13/14, wall contacts and ball loss use 16, laser firing uses 18, brick/explosive-ball impacts use 15, explosive chains use 5, and revealing hidden bricks uses 6. The third pass distinguishes wall, brick, and bat contacts: wall flag `0x4744f4` selects the FILE16 buffer bank (`0x4459eb`); brick flag `0x474470` selects FILE15 (`0x4458e2`). MIDI synthesis remains approximate.
 
 ### Cinematic mesh and script formats
 
@@ -140,15 +140,61 @@ Normal/sticky bat contacts use 13/14, ball loss 16, laser firing 18, explosive-b
 
 The native world transform scales, rotates X/Y/Z, and translates (`0x436fb0`). Camera setup at `0x43c58b` uses eye `(0,0,-20)`, target `(0,0,0)`, up `(0,1,0)`. Projection setup at `0x43c485` supplies near 1, far 300, and field of view π/2. The WebGL shader implements this geometry; shading is a browser approximation rather than an emulation of Direct3D 7.
 
-| Pack | Intro models / frames | Outro models / frames | Victory models / frames |
-| --- | --- | --- | --- |
-| Original | 13 / 5166 | 1 / 842 | 2 / 3301 |
-| Pack 2 | 7 / 2654 | 2 / 555 | 7 / 2263 |
-| Pack 3 | 15 / 7184 | 3 / 1753 | 6 / 3811 |
+| Pack     | Intro models / frames | Outro models / frames | Victory models / frames |
+| -------- | --------------------- | --------------------- | ----------------------- |
+| Original | 13 / 5166             | 1 / 842               | 2 / 3301                |
+| Pack 2   | 7 / 2654              | 2 / 555               | 7 / 2263                |
+| Pack 3   | 15 / 7184             | 3 / 1753              | 6 / 3811                |
 
 The Original intro has 60 trailing bytes that do not decode as complete commands; Pack 2 victory has 288. The extractor retains the valid prefix and reports `trailingBytes`; it does not invent missing commands. These are observed undecodable records, not proof of how the original runtime handled them. The other seven scripts decode to the end. Native LIGHT resources are not yet emulated. Playback uses 60 frames/second with a seekable timeline; the source scripts store frame counts, not timestamps. Scene music comes from entries 101–103.
 
 The viewer loads these sequences on demand, pauses gameplay underneath, frees GPU objects on close, and returns to the same game state. Browser tests load all nine, seek several points, and inspect actual WebGL framebuffer pixels and errors. Firefox was also visually checked on the physical Mac.
+
+## Third recovery pass: gameplay audit
+
+`npm run analyze` now retains **54 function bodies** and extracts eleven floating-point constants directly from the pinned executable. The engine regressions exercise the numerical rules below, and browser tests compare all 660 pixels of a descended brick with its original image region.
+
+### Logic cadence and physics
+
+The loop at `0x4189bd–0x418b4e` calls movement, bonus motion, animation counters, laser motion, and rendering. Renderer `0x419160` calls power-counter/sound processing on every invocation, then increments `0x475c42` and skips drawing until the second invocation (`0x4191bf–0x4191cd`). It resets that counter after the DirectDraw surface flip at `0x419c95`. Lightning and chain/hidden-brick processing run inside the drawing branch (`0x419a5f–0x419a64`).
+
+The browser therefore normalizes **120 logic updates and 60 presentation updates per second**. The 2:1 ratio is recovered; the choice of 60 presentation Hz remains an adaptation, since the Windows program has not been timed on its original DirectDraw runtime. Logic and presentation counters must not all be divided by the same rate.
+
+| Rule                  | Native evidence                                                                    | Browser behavior                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Playfield             | `0x416213–0x41621c`, 1024 × 768                                                    | Corrected width from 1023 to 1024; artwork is still exactly 1023 pixels wide                                |
+| Bat top               | `0x42d4fc–0x42d519`, 768 − 16 − 21 − 8                                             | y = 723, correcting 727                                                                                     |
+| Minimum/maximum speed | Defaults 1/6 at `0x40e719`, `0x40e834`; conversion adds 0.5 at `0x40f1b4–0x40f1e3` | 1.5/6.5 pixels per logic update → 180/780 px/s                                                              |
+| Acceleration          | Default 5 at `0x40e5fd`; divide by 100 at `0x40f1f6`; helper `0x41c1c0`            | +0.05 pixels/update on collision → +6 px/s per collision, only if the full increment fits below the maximum |
+| Serve direction       | `0x42d57f–0x42d5d2`                                                                | Native angle `2π/3 + Rnd×2π/3`, giving an upward 120-degree cone                                            |
+| Paddle direction      | `0x41a0d2–0x41a1ec`                                                                | Native angle `4.3982297156 − fraction×2.5132741232`; velocity uses sine for x and cosine for y              |
+| Sticky catch          | `0x41a383–0x41a48a`                                                                | Only the center catches: excludes the first 9 and last 10 bat pixels                                        |
+| Sticky hold           | `0x42e081–0x42e0de`                                                                | Releases after 240 presentation updates (4 seconds), or a click; keeps the collision speed/direction        |
+| Ball loss             | `0x417a51` onward                                                                  | Center crossing `height − radius`, correcting `height + radius`                                             |
+
+The former continuous acceleration and minimum horizontal rebound velocity were invented. Both are removed. Free flight now keeps constant speed. The settings expose starting/slow speed, maximum/fast speed, and gain per collision separately. Native fast/slow handlers set the configured bounds (`0x4333f1`, `0x433651`), including attached active balls.
+
+Fast-drop eligibility also has native state: `0x42951b–0x429567` checks that the configured minimum and maximum differ, suppresses another fast draw after a fast candidate, and re-enables it on a slow candidate. It does not inspect current ball speed. The port now tracks this state for accepted candidates; the native mutation order for a rejected duplicate slow candidate is still a small difference.
+
+### Falling objects, lasers, and lightning
+
+Dropped objects are projectiles. `0x429684–0x4296cf` copies the brick's stored impact direction and **half its speed**. `0x429724` starts the gravity component at zero. `0x41bd60` adds the gravity component to y, then increases it by the configured bonus setting divided by 200. Default 5 gives 0.025 pixels/update², or 360 px/s² at the normalized cadence. `0x429948–0x429984` adds inherited x/y motion; side/top helpers reflect it at the boundaries. The port now stores impact velocity per cell, carries it through descent, and emits moving drops at `(brick x + 6, brick y)` instead of fixed-speed vertical falls.
+
+Lasers have **four slots per side**, not an unlimited stream (`0x40f95d`, `0x40f9b5`). The firing counters permit a shot every 18 logic updates while a slot is available; bolts move five pixels per update (`0x431aa7`, constant `0x402560`). Damage at `0x431b5b–0x431bbf` removes **one hit**, reveals hidden bricks, and triggers explosive cells. It does not inherit piercing/power-ball damage. The port uses the 31 original `BULLET` frames; exact independent-bank cooldown behavior when a bank is full remains adapted.
+
+Lightning's `0x431f88–0x43201d` tries up to 1,054 random grid indices using nearest-even rounding of `Rnd×1053`, then falls back to the first occupied cell. It chooses **one brick**, not a column. `0x4323d8–0x432480` destroys that cell irrespective of armor when the bolt reaches it. Its travel uses initial velocity and acceleration of `targetY×3/670`, with velocity incremented before position. At presentation update 20 it reaches the target. The port restores that delay and uses the recovered `ORAGE/101` bitmap (17 × 335, stretched to the original 33-pixel destination width). Texture cropping/flicker remains visually adapted.
+
+### Wall state, chains, and life resets
+
+`0x430eda–0x4311d8` visits cells **1022 down to 0**. Each occupied cell moves down 31 indices only if the destination is empty. Bottom-row bricks stay put; a stack can move one row if its bottom has room. The native routine copies artwork, damage, impact state, reveal flags, rain markers, and explosion flags. The port now moves these states, preserving each brick's source image coordinates. It also restores the two-update piercing protection used to avoid trapping a ball during descent (`0x430ebe`, `0x42ee41`).
+
+Chain processing `0x42e0e0–0x42e383` advances every fourth **presentation** update. It marks neighboring explosive cells, including diagonals, then destroys marked cells on the next pass. A mark earns 5 points and destruction earns 10. The immediate recursive chain implementation is replaced with the two stages, including deterministic ascending cell order. Detonate marks all explosive cells together (`0x43550e–0x435553`).
+
+Lose-life pickup `0x43387e–0x43388f` decrements lives and exits the current play loop. The next outer-loop animation resets powers via `0x434372`/`0x434a22`. The browser now discards the old balls, bullets, and drops and serves again; it no longer merely subtracts a life while the old game continues. Destroyed bricks and the score remain. A browser accumulator bug during an in-tick life reset was also fixed.
+
+Ball sprite rotation now advances with ball speed (`0x42eafa–0x42eb3d`). Bat and water animation cadences use the recovered counters. Browser UI, added glow/particle overlays, and the complete native reflection effects remain separate presentation choices.
+
+Saved rules move to version 3. Former default speed/acceleration migrate to recovered defaults; custom numeric speed/gain values, best scores, and level progress survive. A custom old constant drop speed maps proportionally to gravity because those settings have different semantics. Restoring defaults gives the recovered baseline.
 
 ## What is and is not reproduced
 
@@ -156,7 +202,7 @@ Recovered exactly from resources: all 110 level grids, per-cell source artwork, 
 
 Reimplemented in TypeScript: ball motion, paddle collision/steering, brick collision/damage, hidden/explosive bricks, 100-ball capacity, all 22 bonus categories, scoring, lives, level progression, pause, settings, and browser persistence.
 
-Adapted or approximate: continuous physics and acceleration, power durations, fast/slow eligibility details, rain lifetime/hidden-state restoration, lightning targeting, some settings semantics, generic collision sound triggers, music transitions, cinematic lighting, and chain-reaction timing. The new engine uses a 120 Hz fixed timestep and substeps to avoid tunneling; it is not a literal translation of every native collision routine.
+Adapted or approximate: collision contact geometry/order (including paddle sides and simultaneous brick contacts), double-precision/substep integration rather than native VB6 single-precision arithmetic, random-number stream, the Windows wall-clock cadence, some laser-bank cooldown and rejected-candidate bookkeeping, music transitions, cinematic lighting, and some sprite composition. The engine uses a 120 Hz fixed timestep and substeps to avoid tunneling; it is not a literal translation of every native collision routine. Level-clear timing and the manual next-level UI are browser adaptations.
 
 Not reproduced: complete native lighting scripts, undecoded cinematic tail records, full native menu/high-score UI, and every cosmetic reflection/rotation effect. Original Windows gameplay was not run side-by-side, so full behavioral equivalence is **not verified**. No physical iPhone testing was performed; touch input was exercised in a narrow Chromium viewport on the physical Mac.
 

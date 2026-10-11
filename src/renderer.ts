@@ -1,4 +1,13 @@
-import { Game, WIDTH, HEIGHT, BW, BH, COLS, PADDLE_Y } from "./engine";
+import {
+  Game,
+  WIDTH,
+  HEIGHT,
+  BW,
+  BH,
+  COLS,
+  PADDLE_Y,
+  RAIN_DURATION,
+} from "./engine";
 import type { Art } from "./assets";
 
 export class Renderer {
@@ -52,8 +61,8 @@ export class Renderer {
           y = Math.floor(i / COLS) * BH;
         w.drawImage(
           this.art!.bricks,
-          x,
-          y,
+          (game.artwork[i] % COLS) * BW,
+          Math.floor(game.artwork[i] / COLS) * BH,
           BW,
           BH,
           x,
@@ -71,11 +80,12 @@ export class Renderer {
     }
     c.drawImage(this.wall, 0, 0);
     if (game.rainTime > 0) {
-      const rain = (Math.floor((800 / 60 - game.rainTime) * 15) % 10) + 1;
+      const rain = (Math.floor((RAIN_DURATION - game.rainTime) * 30) % 10) + 1;
       for (let y = 0; y < HEIGHT; y += 256)
         for (let x = 0; x < WIDTH; x += 320) this.sprite(`RAIN/${rain}`, x, y);
     }
-    const frame = (Math.floor(game.time * 24) % 36) + 1;
+    const frame =
+      (Math.floor(game.time * (game.stickyTime > 0 ? 60 : 30)) % 36) + 1;
     if (game.laserTime > 0) {
       this.sprite(
         `TIRS/${(Math.floor(game.time * 18) % 9) + 1}`,
@@ -121,7 +131,7 @@ export class Renderer {
         c.fill();
       }
       this.sprite(
-        `BALLE/${frame}`,
+        `BALLE/${(ball.frame ?? 0) + 1}`,
         ball.x - game.radius,
         ball.y - game.radius,
         game.radius * 2,
@@ -133,11 +143,12 @@ export class Renderer {
       c.fillRect(drop.x + 4, drop.y + 5, 33, 33);
       this.sprite(`BONUS/${drop.type + 1}`, drop.x, drop.y);
     }
-    c.fillStyle = "#bffbff";
-    c.shadowColor = "#44caff";
-    c.shadowBlur = 9;
-    for (const shot of game.shots) c.fillRect(shot.x - 1, shot.y, 2, 11);
-    c.shadowBlur = 0;
+    for (const shot of game.shots)
+      this.sprite(
+        `BULLET/${(Math.floor(game.time * 60) % 31) + 1}`,
+        shot.x,
+        shot.y,
+      );
     for (const e of game.effects) {
       const a = 1 - e.age / 0.45;
       c.globalAlpha = a;
@@ -167,7 +178,29 @@ export class Renderer {
       }
     }
     c.globalAlpha = 1;
-    const water = (Math.floor(game.time * 10) % 8) + 1;
+    if (game.lightning) {
+      const { index, age } = game.lightning;
+      const frame = Math.floor(age * 60);
+      const progress = Math.min(1, (3 * frame * (frame + 3)) / (2 * 670));
+      const x = (index % COLS) * BW + BW / 2;
+      const bottom = (Math.floor(index / COLS) * BH + BH / 2) * progress;
+      const rect = this.art?.atlas["ORAGE/1"];
+      if (rect && this.art && bottom > 0) {
+        const [sx, sy, sw, sh] = rect;
+        c.drawImage(
+          this.art.sprites,
+          sx,
+          sy,
+          sw,
+          Math.max(1, sh * progress),
+          x - BW / 2,
+          0,
+          BW,
+          bottom,
+        );
+      }
+    }
+    const water = (Math.floor(game.time * 20) % 8) + 1;
     for (let x = 0; x < WIDTH; x += 64)
       this.sprite(`MER/${water}`, x, HEIGHT - 12);
     if (game.messageTime > 0 && game.phase === "playing") {

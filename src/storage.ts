@@ -9,7 +9,7 @@ export type Save = {
   muted: boolean;
 };
 export const newSave = (): Save => ({
-  rulesVersion: 2,
+  rulesVersion: 3,
   pack: 0,
   level: 1,
   best: 0,
@@ -35,10 +35,11 @@ export function readSave(): Save {
     if (typeof s.muted === "boolean") save.muted = s.muted;
     if (s.settings) {
       const ranges = {
-        speed: [200, 700],
+        speed: [180, 1140],
+        maxSpeed: [180, 1140],
         acceleration: [0, 15],
         bonusFrequency: [0, 9],
-        bonusSpeed: [50, 220],
+        bonusGravity: [216, 648],
         maxBonuses: [1, 22],
         volume: [0, 1],
       };
@@ -66,6 +67,21 @@ export function readSave(): Save {
       }
       if (!s.rulesVersion && s.settings.maxBonuses === 6)
         save.settings.maxBonuses = 3;
+      if ((s.rulesVersion ?? 0) < 3) {
+        if (s.settings.speed === 390) save.settings.speed = defaults.speed;
+        if (s.settings.acceleration === 4)
+          save.settings.acceleration = defaults.acceleration;
+        if (Number.isFinite(s.settings.bonusSpeed))
+          save.settings.bonusGravity = clamp(
+            (s.settings.bonusSpeed * 360) / 105,
+            216,
+            648,
+          );
+      }
+      save.settings.maxSpeed = Math.max(
+        save.settings.speed,
+        save.settings.maxSpeed,
+      );
       save.settings.bonusFrequency = Math.round(save.settings.bonusFrequency);
       save.settings.maxBonuses = Math.round(save.settings.maxBonuses);
       if (typeof s.settings.music === "boolean")

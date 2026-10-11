@@ -5,7 +5,7 @@ import pefile
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-SPRITES = ['BALLE', 'BONUS', 'NORMAL_BAT_LEFT', 'NORMAL_BAT_CENTER', 'NORMAL_BAT_RIGHT', 'GLUE_BAT_LEFT', 'GLUE_BAT_CENTER', 'GLUE_BAT_RIGHT', 'BULLET', 'MER', 'TIRS', 'COLLISION_EFFECTS', 'EXPLODER', 'RAIN', 'TITLE']
+SPRITES = ['BALLE', 'BONUS', 'NORMAL_BAT_LEFT', 'NORMAL_BAT_CENTER', 'NORMAL_BAT_RIGHT', 'GLUE_BAT_LEFT', 'GLUE_BAT_CENTER', 'GLUE_BAT_RIGHT', 'BULLET', 'MER', 'TIRS', 'COLLISION_EFFECTS', 'EXPLODER', 'RAIN', 'TITLE', 'ORAGE']
 
 def resources(path):
     pe = pefile.PE(str(path))
@@ -31,6 +31,27 @@ def keyed(data):
     im.putdata([(r,g,b,0 if r < 8 and g < 4 and b < 8 else 255) for r,g,b,a in im.get_flattened_data()])
     return im
 
+def extract_sprites(res, folder):
+    atlas = {}
+    images = []
+    for category in SPRITES:
+        for rid, data in sorted(res.get(category, {}).items()):
+            im = keyed(data)
+            images.append((f'{category}/{rid-100}',im))
+    x = y = row_h = 0
+    placements = []
+    for key,im in images:
+        if x + im.width > 1024: x,y,row_h = 0,y+row_h+2,0
+        placements.append((key,im,x,y))
+        atlas[key] = [x,y,im.width,im.height]
+        x += im.width + 2
+        row_h = max(row_h,im.height)
+    sheet = Image.new('RGBA',(1024,y+row_h))
+    for key,im,x,y in placements: sheet.paste(im,(x,y))
+    sheet.save(folder/'sprites.png')
+    (folder/'sprites.json').write_text(json.dumps(atlas,separators=(',',':')))
+    return len(images)
+
 def extract(app, output):
     output.mkdir(parents=True, exist_ok=True)
     packs = []
@@ -51,24 +72,7 @@ def extract(app, output):
             tile = res['TILES'].get(rid, res['TILES'][101])
             Image.open(io.BytesIO(tile)).save(folder / f'tile-{rid-100}.png')
             levels.append({'number':rid-100,'cells':cells})
-        atlas = {}
-        images = []
-        for category in SPRITES:
-            for rid, data in sorted(res.get(category, {}).items()):
-                im = keyed(data)
-                images.append((f'{category}/{rid-100}',im))
-        x = y = row_h = 0
-        placements = []
-        for key,im in images:
-            if x + im.width > 1024: x,y,row_h = 0,y+row_h+2,0
-            placements.append((key,im,x,y))
-            atlas[key] = [x,y,im.width,im.height]
-            x += im.width + 2
-            row_h = max(row_h,im.height)
-        sheet = Image.new('RGBA',(1024,y+row_h))
-        for key,im,x,y in placements: sheet.paste(im,(x,y))
-        sheet.save(folder/'sprites.png')
-        (folder/'sprites.json').write_text(json.dumps(atlas,separators=(',',':')))
+        sprite_count = extract_sprites(res, folder)
         for rid,data in res['SOUNDS'].items(): (folder/f'sound-{rid-100}.mp3').write_bytes(mp3(data))
         music = {}
         for rid,data in sorted(res['MUSICS'].items()):
@@ -95,7 +99,7 @@ def extract(app, output):
         from extract_scenes import extract_scenes
         scenes = extract_scenes(res, folder)
         packs.append({'scenes': scenes, 'sceneMusic': {name: music.get(101+i) for i,name in enumerate(['intro','outro','youwon'])}, 'id':index,'name':['The Original','Pack 2','Pack 3'][index], 'levels':len(levels),'music':tracks})
-        print(f'Pack {index}: {len(levels)} levels, {len(images)} sprites, {len(music)} music entries')
+        print(f'Pack {index}: {len(levels)} levels, {sprite_count} sprites, {len(music)} music entries')
     (output/'manifest.json').write_text(json.dumps({'packs':packs,'sha256':provenance},indent=2))
 
 if __name__ == '__main__':

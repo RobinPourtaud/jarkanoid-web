@@ -166,6 +166,7 @@ test("bonus candidates are discarded without rerolls and accepted drops obey coo
   });
   g.load({ number: 1, cells: Array(1054).fill(1) });
   g.bonusCooldown = 0;
+  calls = 0;
   g.hit(0);
   assert.equal(calls, 1);
   assert.equal(g.drops.length, 0);
@@ -174,11 +175,11 @@ test("bonus candidates are discarded without rerolls and accepted drops obey coo
   g.hit(2);
   assert.equal(g.drops.length, 1);
   assert.equal(g.drops[0].type, 16);
-  assert.equal(g.bonusCooldown, 40 / 60);
+  assert.equal(g.bonusCooldown, 40 / 120);
 });
 
 test("explosive chain neighbors receive bonus draws when preceding draws fail", () => {
-  const draws = [0.9, 136 / 1200];
+  const draws = [0.9, 0.9, 136 / 1200];
   const g = new Game(() => draws.shift() ?? 0.9);
   const cells = Array(1054).fill(0);
   cells[0] = -2;
@@ -186,7 +187,9 @@ test("explosive chain neighbors receive bonus draws when preceding draws fail", 
   cells[2] = 1;
   g.load({ number: 1, cells });
   g.bonusCooldown = 0;
+  g.launch();
   g.hit(0);
+  for (let n = 0; n < 16; n++) g.update(STEP);
   assert.equal(g.drops.length, 1);
   assert.equal(g.drops[0].type, 16);
   assert.equal(g.cells[1], 0);

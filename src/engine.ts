@@ -1,12 +1,15 @@
-export const WIDTH = 1023,
+export const WIDTH = 1024,
   HEIGHT = 768,
   COLS = 31,
   ROWS = 34,
   BW = 33,
   BH = 20;
-export const PADDLE_Y = 727,
+export const PADDLE_Y = 723,
   MAX_BALLS = 100,
-  STEP = 1 / 120;
+  NATIVE_HZ = 120,
+  STEP = 1 / NATIVE_HZ;
+export const POWER_DURATION = 3600 / NATIVE_HZ;
+export const RAIN_DURATION = 800 / NATIVE_HZ;
 export type Phase = "ready" | "playing" | "paused" | "cleared" | "gameover";
 export type Ball = {
   x: number;
@@ -15,9 +18,18 @@ export type Ball = {
   vy: number;
   stuck: boolean;
   offset: number;
+  heldTime?: number;
+  frame?: number;
+  frameProgress?: number;
 };
-export type Drop = { x: number; y: number; type: number };
-export type Shot = { x: number; y: number };
+export type Drop = {
+  x: number;
+  y: number;
+  type: number;
+  vx?: number;
+  vy?: number;
+};
+export type Shot = { x: number; y: number; side?: number };
 export type Effect = {
   x: number;
   y: number;
@@ -27,18 +39,20 @@ export type Effect = {
 export type Level = { number: number; cells: number[] };
 export type Settings = {
   speed: number;
+  maxSpeed: number;
   acceleration: number;
   bonusFrequency: number;
-  bonusSpeed: number;
+  bonusGravity: number;
   maxBonuses: number;
   volume: number;
   music: boolean;
 };
 export const defaults: Settings = {
-  speed: 390,
-  acceleration: 4,
+  speed: 180,
+  maxSpeed: 780,
+  acceleration: 6,
   bonusFrequency: 5,
-  bonusSpeed: 105,
+  bonusGravity: 360,
   maxBonuses: 3,
   volume: 0.55,
   music: true,
@@ -52,7 +66,7 @@ export const BONUSES = [
   ["Explosive ball", "Hits damage the surrounding bricks."],
   ["Power ball", "Breaks tough bricks in one hit."],
   ["Laser bat", "Hold the mouse button or Space to fire."],
-  ["Lightning", "A lightning strike clears a column."],
+  ["Lightning", "A lightning strike destroys one randomly selected brick."],
   ["Sticky bat", "Catches balls; click or press Space to release."],
   ["Narrower bat", "Makes your bat narrower."],
   ["Larger balls", "Increases the size of your balls."],
@@ -62,7 +76,7 @@ export const BONUSES = [
   ["Lose a life", "Removes one life."],
   ["Extra life", "Adds one life."],
   ["Chain reaction", "Detonates the explosive bricks."],
-  ["Rain", "Reveals hidden bricks under an animated rain shower."],
+  ["Rain", "Temporarily reveals hidden bricks under a rain shower."],
   ["Next level", "Awards 1,000 points and clears the level."],
   ["5,000 points", "Adds 5,000 points."],
   ["Lose 5,000", "Removes 5,000 points."],
@@ -74,14 +88,19 @@ export function bonusFromRoll(random: number, frequency = 5): number | null {
   if (frequency <= 0) return null;
   const denominator = (17 - clamp(Math.round(frequency), 1, 9)) * 100;
   const value = clamp(random, 0, 1 - Number.EPSILON) * denominator;
-  const floor = Math.floor(value);
-  let draw = value - floor === 0.5 ? floor + (floor % 2) : Math.round(value);
+  let draw = roundEven(value);
   if (draw > 165) return null;
   for (let type = 0; type < BONUS_WEIGHTS.length; type++) {
     draw -= BONUS_WEIGHTS[type];
     if (draw < 0) return type === 19 && denominator < 1200 ? null : type;
   }
   return null;
+}
+export function roundEven(value: number) {
+  const floor = Math.floor(value);
+  return value - floor === 0.5
+    ? floor + Math.abs(floor % 2)
+    : Math.round(value);
 }
 export const BAD_BONUSES = new Set([4, 10, 12, 13, 15, 21]);
 export type GameEvent =
@@ -90,6 +109,8 @@ export type GameEvent =
   | "ballLost"
   | "reveal"
   | "chain"
+  | "wallBounce"
+  | "brickHit"
   | "bounce"
   | "brick"
   | "bonus"
@@ -107,6 +128,14 @@ export class Game {
   settings = { ...defaults };
   cells: number[] = [];
   original: number[] = [];
+  artwork: number[] = [];
+  rainHidden = new Set<number>();
+  lightning: { index: number; age: number } | null = null;
+  private impacts: { vx: number; vy: number }[] = [];
+  private fastPending = false;
+  private descentTime = 0;
+  private chainPending = new Set<number>();
+  private chainTime = 0;
   balls: Ball[] = [];
   drops: Drop[] = [];
   shots: Shot[] = [];
@@ -145,6 +174,8 @@ export class Game {
     }
     this.original = [...level.cells];
     this.cells = [...level.cells];
+    this.artwork = level.cells.map((_, i) => i);
+    this.rainHidden.clear();
     this.wallOffset = 0;
     this.drops = [];
     this.shots = [];
@@ -164,22 +195,33 @@ export class Game {
   }
 
   resetPowers() {
+    this.restoreHidden();
+    this.lightning = null;
+    this.fastPending = false;
+    this.descentTime = 0;
+    this.chainPending.clear();
+    this.chainTime = 0;
     this.paddleWidth = 87;
     this.radius = 5;
     this.mode = "normal";
     this.modeTime = this.laserTime = this.stickyTime = this.rainTime = 0;
-    this.shootCooldown = 0;
-    this.bonusCooldown = 40 / 60;
+    this.shootCooldown = 18 / NATIVE_HZ;
+    this.bonusCooldown = 40 / NATIVE_HZ;
     this.firing = false;
   }
 
   serve() {
+    const angle = ((1 + this.random()) * Math.PI * 2) / 3;
+    this.impacts = this.cells.map(() => ({
+      vx: Math.sin(angle) * this.settings.speed,
+      vy: Math.cos(angle) * this.settings.speed,
+    }));
     this.balls = [
       {
         x: this.paddleX,
         y: PADDLE_Y - this.radius - 1,
-        vx: 0,
-        vy: 0,
+        vx: Math.sin(angle) * this.settings.speed,
+        vy: Math.cos(angle) * this.settings.speed,
         stuck: true,
         offset: 0,
       },
@@ -212,11 +254,9 @@ export class Game {
     if (!this.running) return;
     for (const ball of this.balls)
       if (ball.stuck) {
-        const angle =
-          clamp(ball.offset / (this.paddleWidth / 2), -0.85, 0.85) * 1.1 + 0.13;
-        ball.vx = Math.sin(angle) * this.settings.speed;
-        ball.vy = -Math.cos(angle) * this.settings.speed;
+        if (this.phase === "ready") this.setSpeed(ball, this.settings.speed);
         ball.stuck = false;
+        ball.heldTime = 0;
       }
     this.phase = "playing";
     this.messageTime = 0;
@@ -237,8 +277,8 @@ export class Game {
     if (!this.running) return;
     this.accumulator += clamp(elapsed, 0, 0.1);
     while (this.accumulator >= STEP) {
-      this.tick(STEP);
       this.accumulator -= STEP;
+      this.tick(STEP);
       if (!this.running) break;
     }
   }
@@ -255,39 +295,68 @@ export class Game {
     const wasSticky = this.stickyTime > 0;
     this.stickyTime = Math.max(0, this.stickyTime - dt);
     if (wasSticky && !this.stickyTime) this.launch();
+    const wasRaining = this.rainTime > 0;
     this.rainTime = Math.max(0, this.rainTime - dt);
+    if (wasRaining && !this.rainTime) this.restoreHidden();
+    this.descentTime = Math.max(0, this.descentTime - dt);
+    this.chainTime += dt;
+    if (this.chainTime + 1e-9 >= 4 / 60) {
+      this.chainTime = 0;
+      this.advanceChain();
+    }
+    if (this.lightning) {
+      this.lightning.age += dt;
+      if (this.lightning.age + 1e-9 >= 20 / 60) {
+        this.hit(this.lightning.index, true, { vx: 0, vy: 0 });
+        this.lightning = null;
+      }
+    }
     this.shootCooldown -= dt;
-    if (this.firing && this.laserTime > 0 && this.shootCooldown <= 0) {
-      this.shots.push(
-        { x: this.paddleX - this.paddleWidth / 2 + 6, y: PADDLE_Y },
-        { x: this.paddleX + this.paddleWidth / 2 - 6, y: PADDLE_Y },
-      );
-      this.shootCooldown = 0.15;
-      this.emit("fire");
+    if (this.firing && this.laserTime > 0 && this.shootCooldown <= 1e-9) {
+      for (const side of [-1, 1]) {
+        if (this.shots.filter((shot) => shot.side === side).length >= 4)
+          continue;
+        this.shots.push({
+          x:
+            side < 0
+              ? this.paddleX - this.paddleWidth / 2 + 1 + this.random() * 6
+              : this.paddleX + this.paddleWidth / 2 - 2 - this.random() * 6,
+          y: PADDLE_Y,
+          side,
+        });
+        this.emit("fire");
+      }
+      this.shootCooldown = 18 / NATIVE_HZ;
     }
     this.bonusCooldown = Math.max(0, this.bonusCooldown - dt);
     for (const ball of this.balls) {
-      if (ball.stuck) continue;
-      const speed = Math.hypot(ball.vx, ball.vy);
-      this.setSpeed(
-        ball,
-        Math.min(850, speed + this.settings.acceleration * dt),
-      );
+      ball.frameProgress =
+        (ball.frameProgress ?? 0) + (Math.hypot(ball.vx, ball.vy) * dt) / 10;
+      if (ball.frameProgress >= 4) {
+        ball.frame = ((ball.frame ?? 0) + 1) % 36;
+        ball.frameProgress = 0;
+      }
+      if (ball.stuck) {
+        ball.heldTime = (ball.heldTime ?? 0) + dt;
+        if (ball.heldTime + 1e-9 < 240 / 60) continue;
+        ball.stuck = false;
+        ball.heldTime = 0;
+      }
       const steps = Math.max(
         1,
         Math.ceil((Math.hypot(ball.vx, ball.vy) * dt) / 3),
       );
       for (let n = 0; n < steps; n++) {
         this.moveBall(ball, dt / steps);
-        if (ball.stuck || ball.y > HEIGHT + this.radius || !this.running) break;
+        if (ball.stuck || ball.y > HEIGHT - this.radius || !this.running) break;
       }
     }
-    if (this.balls.some((b) => b.y > HEIGHT + this.radius))
+    if (this.balls.some((b) => b.y > HEIGHT - this.radius))
       this.emit("ballLost");
-    this.balls = this.balls.filter((b) => b.y <= HEIGHT + this.radius);
+    this.balls = this.balls.filter((b) => b.y <= HEIGHT - this.radius);
     for (const shot of this.shots) {
       const oldY = shot.y;
-      shot.y -= 780 * dt;
+      shot.y -= 5 * NATIVE_HZ * dt;
       const col = Math.floor(shot.x / BW);
       for (
         let row = Math.min(ROWS - 1, Math.floor((oldY - this.wallOffset) / BH));
@@ -296,7 +365,7 @@ export class Game {
       ) {
         const index = row * COLS + col;
         if (col >= 0 && col < COLS && this.cells[index]) {
-          this.hit(index, true);
+          this.hit(index);
           shot.y = -100;
           break;
         }
@@ -305,7 +374,17 @@ export class Game {
     this.shots = this.shots.filter((s) => s.y > -20);
     for (const drop of this.drops) {
       const oldY = drop.y;
-      drop.y += this.settings.bonusSpeed * dt;
+      drop.x += (drop.vx ?? 0) * dt;
+      drop.y += (drop.vy ?? 0) * dt;
+      drop.vy = (drop.vy ?? 0) + this.settings.bonusGravity * dt;
+      if (drop.x < 0 || drop.x > WIDTH - 33) {
+        drop.x = clamp(drop.x, 0, WIDTH - 33);
+        drop.vx = -(drop.vx ?? 0);
+      }
+      if (drop.y < 0) {
+        drop.y = 0;
+        drop.vy = Math.abs(drop.vy ?? 0);
+      }
       if (
         drop.y + 33 >= PADDLE_Y &&
         oldY <= PADDLE_Y + 21 &&
@@ -313,7 +392,7 @@ export class Game {
       ) {
         this.applyBonus(drop.type);
         drop.y = HEIGHT + 100;
-        if (!this.running) break;
+        if (this.phase !== "playing") break;
       }
     }
     this.drops = this.drops.filter((d) => d.y < HEIGHT);
@@ -336,17 +415,20 @@ export class Game {
     if (ball.x < r) {
       ball.x = r;
       ball.vx = Math.abs(ball.vx);
-      this.emit("bounce");
+      this.accelerate(ball);
+      this.emit("wallBounce");
     }
     if (ball.x > WIDTH - r) {
       ball.x = WIDTH - r;
       ball.vx = -Math.abs(ball.vx);
-      this.emit("bounce");
+      this.accelerate(ball);
+      this.emit("wallBounce");
     }
     if (ball.y < r) {
       ball.y = r;
       ball.vy = Math.abs(ball.vy);
-      this.emit("bounce");
+      this.accelerate(ball);
+      this.emit("wallBounce");
     }
     if (
       ball.vy > 0 &&
@@ -355,24 +437,27 @@ export class Game {
       Math.abs(ball.x - this.paddleX) <= this.paddleWidth / 2 + r
     ) {
       ball.y = PADDLE_Y - r - 0.1;
-      const relative = clamp(
-        (ball.x - this.paddleX) / (this.paddleWidth / 2),
-        -0.95,
-        0.95,
+      this.accelerate(ball);
+      const fraction = clamp(
+        (roundEven(ball.x) - (this.paddleX - this.paddleWidth / 2)) /
+          this.paddleWidth,
+        0,
+        1,
       );
-      const speed = Math.max(
-        this.settings.speed * 0.65,
-        Math.hypot(ball.vx, ball.vy),
-      );
-      const angle = relative * 1.13;
+      const angle = 4.3982297156 - fraction * 2.5132741232;
+      const speed = Math.hypot(ball.vx, ball.vy);
       ball.vx = Math.sin(angle) * speed;
-      if (Math.abs(ball.vx) < 25) ball.vx = (ball.vx < 0 ? -1 : 1) * 25;
-      ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
-      if (this.stickyTime > 0) {
+      ball.vy = Math.cos(angle) * speed;
+      if (
+        this.stickyTime > 0 &&
+        fraction > 9 / this.paddleWidth &&
+        fraction <= 1 - 10 / this.paddleWidth
+      ) {
         ball.stuck = true;
+        ball.heldTime = 0;
         ball.offset = ball.x - this.paddleX;
       }
-      this.emit(this.stickyTime > 0 ? "stickyBounce" : "bounce");
+      this.emit(ball.stuck ? "stickyBounce" : "bounce");
       return;
     }
     const x0 = clamp(Math.floor((ball.x - r) / BW), 0, COLS - 1),
@@ -388,9 +473,18 @@ export class Game {
         const dx = ball.x - clamp(ball.x, left, left + BW),
           dy = ball.y - clamp(ball.y, top, top + BH);
         if (dx * dx + dy * dy >= r * r) continue;
-        this.hit(index, this.mode === "pierce" || this.mode === "power");
-        if (this.mode === "explode") this.explode(index);
-        if (this.mode === "pierce") continue;
+        const impact = { vx: ball.vx, vy: ball.vy };
+        if (this.mode === "explode") this.explode(index, impact);
+        else
+          this.hit(
+            index,
+            this.mode === "pierce" ||
+              this.mode === "power" ||
+              this.descentTime > 0,
+            impact,
+          );
+        this.accelerate(ball);
+        if (this.mode === "pierce" || this.descentTime > 0) continue;
         if (oldY + r <= top) {
           ball.y = top - r - 0.01;
           ball.vy = -Math.abs(ball.vy);
@@ -414,9 +508,10 @@ export class Game {
       }
   }
 
-  hit(index: number, force = false) {
+  hit(index: number, force = false, impact?: { vx: number; vy: number }) {
     const value = this.cells[index];
     if (!value) return;
+    if (impact) this.impacts[index] = { ...impact };
     const x = (index % COLS) * BW + BW / 2,
       y = Math.floor(index / COLS) * BH + this.wallOffset + BH / 2;
     if (value === -1 && !force) {
@@ -428,52 +523,63 @@ export class Game {
       this.score += 10;
       this.effects.push({ x, y, age: 0, type: "break" });
       this.emit("brick");
-      this.tryDrop(x, y);
+      this.tryDrop(index);
       if (value === -2) this.chain(index);
     } else {
       this.effects.push({ x, y, age: 0, type: "hit" });
-      this.emit("bounce");
+      this.emit("brickHit");
     }
   }
 
-  private tryDrop(x: number, y: number) {
+  private tryDrop(index: number) {
     if (
       this.bonusCooldown === 0 &&
       this.drops.length < this.settings.maxBonuses
     ) {
       const type = bonusFromRoll(this.random(), this.settings.bonusFrequency);
       if (type !== null && this.bonusEligible(type)) {
-        this.drops.push({ x: x - 16.5, y, type });
-        this.bonusCooldown = 40 / 60;
+        const impact = this.impacts[index] ?? { vx: 0, vy: 0 };
+        this.drops.push({
+          x: (index % COLS) * BW + 6,
+          y: Math.floor(index / COLS) * BH,
+          type,
+          vx: impact.vx / 2,
+          vy: impact.vy / 2,
+        });
+        if (type === 13) this.fastPending = true;
+        if (type === 14) this.fastPending = false;
+        this.bonusCooldown = 40 / NATIVE_HZ;
       }
     }
   }
 
   private chain(index: number) {
-    const queue = [index],
-      seen = new Set([index]);
-    while (queue.length) {
-      const cell = queue.shift()!;
-      for (const neighbor of this.neighbors(cell))
-        if (this.cells[neighbor] === -2 && !seen.has(neighbor)) {
-          seen.add(neighbor);
-          queue.push(neighbor);
-          this.cells[neighbor] = 0;
-          this.score += 15;
-          this.revision++;
-          this.tryDrop(
-            (neighbor % COLS) * BW + BW / 2,
-            Math.floor(neighbor / COLS) * BH + this.wallOffset + BH / 2,
-          );
-          this.effects.push({
-            x: (neighbor % COLS) * BW + BW / 2,
-            y: Math.floor(neighbor / COLS) * BH + this.wallOffset + BH / 2,
-            age: 0,
-            type: "break",
-          });
-        }
+    this.chainPending.add(index);
+  }
+
+  private advanceChain() {
+    const next = new Set<number>();
+    for (const index of [...this.chainPending].sort((a, b) => a - b)) {
+      for (const neighbor of this.neighbors(index))
+        if (this.cells[neighbor] === -2) next.add(neighbor);
+      if (this.cells[index] === -2) {
+        this.cells[index] = 0;
+        this.score += 10;
+        this.revision++;
+        this.tryDrop(index);
+        this.effects.push({
+          x: (index % COLS) * BW + BW / 2,
+          y: Math.floor(index / COLS) * BH + BH / 2,
+          age: 0,
+          type: "break",
+        });
+      }
     }
-    this.emit("chain");
+    if (next.size) {
+      this.score += next.size * 5;
+      this.emit("chain");
+    }
+    this.chainPending = next;
   }
 
   private neighbors(index: number) {
@@ -486,13 +592,40 @@ export class Game {
     return result;
   }
 
-  explode(index: number) {
-    for (const n of this.neighbors(index)) this.hit(n);
+  explode(index: number, impact?: { vx: number; vy: number }) {
+    for (const n of [...this.neighbors(index), index])
+      this.hit(n, false, impact);
     this.emit("explode");
   }
   reveal() {
     this.cells = this.cells.map((c) => (c === -1 ? 1 : c));
     this.revision++;
+  }
+  private restoreHidden() {
+    for (const index of this.rainHidden) {
+      if (this.cells[index] > 0) this.cells[index] = -1;
+    }
+    if (this.rainHidden.size) this.revision++;
+    this.rainHidden.clear();
+  }
+  private descendWall() {
+    for (let i = (ROWS - 1) * COLS - 1; i >= 0; i--) {
+      const below = i + COLS;
+      if (!this.cells[i] || this.cells[below]) continue;
+      this.cells[below] = this.cells[i];
+      this.cells[i] = 0;
+      this.artwork[below] = this.artwork[i];
+      this.impacts[below] = this.impacts[i];
+      if (this.chainPending.delete(i)) this.chainPending.add(below);
+      if (this.rainHidden.delete(i)) this.rainHidden.add(below);
+    }
+    this.descentTime = 2 / NATIVE_HZ;
+    this.revision++;
+  }
+  private accelerate(ball: Ball) {
+    const speed = Math.hypot(ball.vx, ball.vy);
+    if (speed <= this.settings.maxSpeed - this.settings.acceleration)
+      this.setSpeed(ball, speed + this.settings.acceleration);
   }
   private setSpeed(ball: Ball, speed: number) {
     const previous = Math.hypot(ball.vx, ball.vy);
@@ -540,7 +673,7 @@ export class Game {
       case 7:
         return this.laserTime === 0;
       case 8:
-        return !this.effects.some((e) => e.type === "lightning");
+        return this.lightning === null;
       case 9:
         return this.stickyTime === 0;
       case 10:
@@ -550,9 +683,11 @@ export class Game {
       case 12:
         return this.radius > 2.5;
       case 13:
-        return this.balls.some((b) => !b.stuck && Math.hypot(b.vx, b.vy) < 779);
+        return (
+          this.settings.speed !== this.settings.maxSpeed && !this.fastPending
+        );
       case 14:
-        return this.balls.some((b) => !b.stuck && Math.hypot(b.vx, b.vy) > 241);
+        return this.settings.speed !== this.settings.maxSpeed;
       case 16:
         return this.lives < 100;
       case 17:
@@ -581,47 +716,37 @@ export class Game {
         break;
       case 3:
         this.mode = "pierce";
-        this.modeTime = 30;
+        this.modeTime = POWER_DURATION;
         break;
-      case 4: {
-        const bottomRow = Math.max(
-          0,
-          ...this.cells.map((c, i) => (c ? Math.floor(i / COLS) + 1 : 0)),
-        );
-        this.wallOffset = Math.min(
-          this.wallOffset + 20,
-          Math.max(0, PADDLE_Y - 55 - bottomRow * BH),
-        );
-        this.revision++;
+      case 4:
+        this.descendWall();
         break;
-      }
       case 5:
         this.mode = "explode";
-        this.modeTime = 30;
+        this.modeTime = POWER_DURATION;
         break;
       case 6:
         this.mode = "power";
-        this.modeTime = 30;
+        this.modeTime = POWER_DURATION;
         break;
       case 7:
-        this.laserTime = 30;
+        this.laserTime = POWER_DURATION;
         break;
       case 8: {
-        const occupied = this.cells.flatMap((c, i) => (c ? [i % COLS] : []));
-        const col = occupied[Math.floor(this.random() * occupied.length)];
-        if (col !== undefined) {
-          for (let row = 0; row < ROWS; row++) this.hit(row * COLS + col, true);
-          this.effects.push({
-            x: col * BW + BW / 2,
-            y: 0,
-            age: 0,
-            type: "lightning",
-          });
+        let index = -1;
+        for (let attempt = 0; attempt < COLS * ROWS; attempt++) {
+          const candidate = roundEven(this.random() * (COLS * ROWS - 1));
+          if (this.cells[candidate]) {
+            index = candidate;
+            break;
+          }
         }
+        if (index < 0) index = this.cells.findIndex((c) => c !== 0);
+        if (index >= 0) this.lightning = { index, age: 0 };
         break;
       }
       case 9:
-        this.stickyTime = 30;
+        this.stickyTime = POWER_DURATION;
         break;
       case 10:
         this.paddleWidth = Math.max(27, this.paddleWidth - 20);
@@ -633,27 +758,26 @@ export class Game {
         this.radius = Math.max(2.5, this.radius - 2.5);
         break;
       case 13:
-        for (const b of this.balls) this.setSpeed(b, 780);
+        for (const b of this.balls) this.setSpeed(b, this.settings.maxSpeed);
         break;
       case 14:
-        for (const b of this.balls) this.setSpeed(b, 240);
+        for (const b of this.balls) this.setSpeed(b, this.settings.speed);
         break;
       case 15:
-        this.lives--;
-        if (this.lives <= 0) {
-          this.phase = "gameover";
-          this.emit("lost");
-        }
+        this.loseLife();
         break;
       case 16:
         this.lives = Math.min(100, this.lives + 1);
         break;
       case 17:
         for (let i = 0; i < this.cells.length; i++)
-          if (this.cells[i] === -2) this.hit(i, true);
+          if (this.cells[i] === -2) this.chain(i);
         break;
       case 18:
-        this.rainTime = 800 / 60;
+        this.rainTime = RAIN_DURATION;
+        this.rainHidden = new Set(
+          this.cells.flatMap((c, i) => (c === -1 ? [i] : [])),
+        );
         this.reveal();
         break;
       case 19:
