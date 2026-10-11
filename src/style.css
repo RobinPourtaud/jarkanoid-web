@@ -1144,6 +1144,9 @@ dialog::backdrop {
   }
 }
 @media (orientation: landscape) and (max-height: 600px) {
+  main {
+    max-width: 1440px;
+  }
   .machine.expanded {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 190px;
@@ -1200,5 +1203,29 @@ dialog::backdrop {
   }
   .machine.expanded .machine-tag {
     display: none;
+  }
+}
+@media (orientation: landscape) and (max-height: 360px) {
+  .machine.expanded .machine-top {
+    height: 24px;
+  }
+  .machine.expanded .scoreboard {
+    gap: 4px 16px;
+    padding: 6px 8px;
+  }
+  .machine.expanded .touch-controls label {
+    display: none;
+  }
+  .machine.expanded .touch-actions {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .machine.expanded .touch-actions button {
+    padding: 4px;
+    font-size: 10px;
+    min-width: 0;
+  }
+  .machine.expanded #exit-expanded {
+    flex-basis: auto;
   }
 }

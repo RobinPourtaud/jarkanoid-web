@@ -518,6 +518,12 @@ test("phone thumb controls, held laser fire, pause, and expanded portrait/landsc
     expect(rect!.y + rect!.height).toBeLessThanOrEqual(393);
   }
   await page.screenshot({ path: "/tmp/jarkanoid-phone-landscape.png" });
+  await page.setViewportSize({ width: 852, height: 290 });
+  for (const selector of ["#game", "#touch-launch", "#touch-pause", "#exit-expanded"]) {
+    const rect = await page.locator(selector).boundingBox();
+    expect(rect!.y).toBeGreaterThanOrEqual(0);
+    expect(rect!.y + rect!.height).toBeLessThanOrEqual(290);
+  }
   await page.locator("#touch-pause").tap();
   await page.evaluate(() => (window as any).__jarkanoid.game.applyBonus(7));
   const input = await context.newCDPSession(page);
@@ -538,6 +544,7 @@ test("phone thumb controls, held laser fire, pause, and expanded portrait/landsc
   ).toBe(false);
   await page.locator("#exit-expanded").tap();
   await expect(page.locator(".machine")).not.toHaveClass(/expanded/);
+  expect((await page.locator("#game").boundingBox())!.width).toBeGreaterThan(300);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
