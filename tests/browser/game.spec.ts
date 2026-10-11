@@ -464,3 +464,84 @@ test("a superseding level load cancels the transition and pack completion stays 
   await expect(page.locator("#level-title")).toHaveText("LEVEL 01");
   await expect(page.locator("#pack-label")).toHaveText("Pack 2");
 });
+
+test("bottom maker credit preserves the bird and respects reduced motion", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await expect(page.locator("footer .maker-credit")).toBeVisible();
+  await expect(page.locator("footer .maker-credit span")).toHaveText(
+    "port byRobin Pourtaud",
+  );
+  await page.locator("footer .maker-credit").hover();
+  expect(
+    await page
+      .locator(".maker-credit .robin-body")
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe("none");
+  await expect(page.locator(".port-intro")).toHaveCount(0);
+});
+
+test("phone thumb controls, held laser fire, pause, and expanded portrait/landscape views", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 393, height: 852 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  await page.getByRole("button", { name: "Expand game" }).tap();
+  await expect(page.locator(".machine")).toHaveClass(/expanded/);
+  await page.getByRole("slider", { name: "Move the bat" }).fill("800");
+  expect(
+    await page.evaluate(() => (window as any).__jarkanoid.game.paddleX),
+  ).toBe(800);
+  await page.locator("#touch-launch").tap();
+  await expect(page.locator("#overlay")).toBeHidden();
+  await page.locator("#touch-pause").tap();
+  await expect(page.locator("#touch-pause")).toHaveText("Resume");
+  const box = await page.locator("#game").boundingBox();
+  expect(box!.width / box!.height).toBeCloseTo(4 / 3, 2);
+  await page.screenshot({ path: "/tmp/jarkanoid-phone-portrait.png" });
+  await page.setViewportSize({ width: 852, height: 393 });
+  const landscape = await page.locator("#game").boundingBox();
+  expect(landscape!.width).toBeGreaterThan(450);
+  expect(landscape!.height).toBeLessThanOrEqual(393);
+  expect(landscape!.width / landscape!.height).toBeCloseTo(4 / 3, 2);
+  for (const selector of ["#touch-launch", "#touch-pause", "#exit-expanded"]) {
+    const rect = await page.locator(selector).boundingBox();
+    expect(rect!.height).toBeGreaterThanOrEqual(44);
+    expect(rect!.y + rect!.height).toBeLessThanOrEqual(393);
+  }
+  await page.screenshot({ path: "/tmp/jarkanoid-phone-landscape.png" });
+  await page.locator("#touch-pause").tap();
+  await page.evaluate(() => (window as any).__jarkanoid.game.applyBonus(7));
+  const input = await context.newCDPSession(page);
+  const fire = await page.locator("#touch-launch").boundingBox();
+  await input.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: fire!.x + 20, y: fire!.y + 20 }],
+  });
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__jarkanoid.game.firing))
+    .toBe(true);
+  await input.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
+  });
+  expect(
+    await page.evaluate(() => (window as any).__jarkanoid.game.firing),
+  ).toBe(false);
+  await page.locator("#exit-expanded").tap();
+  await expect(page.locator(".machine")).not.toHaveClass(/expanded/);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await context.close();
+});

@@ -1,0 +1,50 @@
+@font-face {
+  font-family: Quicksand;
+  src: url("/fonts/quicksand.ttf") format("truetype");
+  font-weight: 300 700;
+  font-display: swap;
+}
+.maker-credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  min-height: 44px;
+}
+.maker-credit svg {
+  width: 32px;
+  height: 32px;
+  overflow: visible;
+}
+.maker-credit span {
+  font:
+    600 12px Quicksand,
+    sans-serif;
+}
+.maker-credit small {
+  display: block;
+  font:
+    10px "DM Sans",
+    sans-serif;
+  margin-bottom: 3px;
+}
+.maker-credit:is(:hover, :focus-visible) .robin-body {
+  animation: bird-greeting 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes bird-greeting {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  40% {
+    transform: translateY(-2px) rotate(-9deg);
+  }
+  70% {
+    transform: rotate(3deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .robin-body {
+    animation: none !important;
+  }
+}

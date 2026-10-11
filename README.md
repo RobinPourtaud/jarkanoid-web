@@ -4,6 +4,8 @@ A playable TypeScript/Canvas/WebGL port of Jérôme Barjot’s **Jarkanoid 3**, 
 
 The engine is reimplemented; this is **not a complete decompilation of the original source** or an exact physics replica. See [reverse engineering notes](docs/reverse-engineering.md) for evidence, recovered formats, and the remaining differences.
 
+Play at **https://jarkanoid.pourtaud.dev/**. Everything runs in the browser; no installation, account, plugin, or game server is required.
+
 ## Run locally
 
 Requires Node.js 22.12+ and Python 3.10+. Asset preparation additionally uses `innoextract`, `ffmpeg`, and `libopenmpt`.
@@ -22,7 +24,9 @@ On Linux, install the corresponding `innoextract`, `ffmpeg`, and `libopenmpt0` p
 
 ## Play
 
-- Mouse, touch, or **← / → / A / D**: move the bat.
+- Mouse, touch, or **← / → / A / D**: move the bat. On phones, use the thumb slider below the field to keep your finger off the ball.
+- **Expand game** fills the available browser viewport, including iPhone Safari. Rotate to landscape for a larger field with controls alongside it; **Exit view** returns to the page. The browser address bar may remain visible.
+- The phone **Launch / fire** button launches/releases balls and fires lasers while held; **Pause / Resume** is available beside it.
 - Click or **Space**: launch/release a ball; hold to fire with the laser bonus.
 - **P / Escape**: pause. **M**: mute. **F**: fullscreen.
 - Choose a level to explore any of the 110 original walls. Game Over restarts at level 1 of the current pack.
@@ -63,6 +67,14 @@ Original game and assets © Jérôme Barjot / ElitzaSoftware. [Original website]
 
 The official site describes the game as freeware; that is not an open-source license. No license or ownership claim over the original game, graphics, levels, or music is made here. This repository is an unofficial preservation project, not endorsed by the original author.
 
-Fonts: Barlow Condensed, DM Sans, and IBM Plex Mono, distributed under the accompanying SIL Open Font Licenses in `public/fonts/`.
+Personal bird logo and its greeting animation come from Robin Pourtaud’s Pond design reference, used only in the bottom “port by” credit. Reduced motion disables the greeting.
+
+Fonts: Barlow Condensed, DM Sans, IBM Plex Mono, and Quicksand, distributed under the accompanying SIL Open Font Licenses in `public/fonts/`.
 
 Between levels, the recovered squeeze-and-mirror transition now plays automatically before the next serve. Score and lives carry over; pack completion keeps the next-pack choice.
+
+## Hosting
+
+Cloudflare serves the static `dist/` directory at `jarkanoid.pourtaud.dev`. Wrangler is a development/deployment dependency only; it is never downloaded or needed by players. No Worker application code or backend runs the game. Keep extracted game assets local and run asset setup before building a new checkout.
+
+With Cloudflare credentials supplied through the environment, run `npm run build`, then `npx wrangler deploy`. The account needs permission to deploy Workers and attach the configured custom domain. Never put credentials in the public directory or repository. For content-only updates with restricted zone permissions, `npx wrangler versions upload` followed by `npx wrangler versions deploy <returned-version-id>@100 --yes` preserves the existing domain binding.

@@ -1,4 +1,5 @@
 import "./style.css";
+import { makerCredit } from "./branding";
 import {
   Game,
   WIDTH,
@@ -39,13 +40,14 @@ $("#app").innerHTML = `
   <header class="masthead"><a href="./" class="brand" aria-label="Jarkanoid 3 home">JARKANOÏD<span>3</span><small>BROWSER EDITION</small></a>
     <div class="edition"><i></i> THE 2003 CLASSIC, BACK IN PLAY</div><button class="quiet" id="about">About this port ↗</button></header>
   <main><div class="game-heading"><div><span class="eyebrow" id="pack-label">THE ORIGINAL</span><h1>Break the wall.</h1></div>
-    <div class="top-actions"><button id="mute" class="icon-button" aria-label="Mute audio" title="Mute audio (M)">♫</button><button id="fullscreen" class="icon-button" aria-label="Enter fullscreen" title="Fullscreen (F)">⛶</button></div></div>
+    <div class="top-actions"><button id="mute" class="icon-button" aria-label="Mute audio" title="Mute audio (M)">♫</button><button id="fullscreen" class="icon-button" aria-label="Expand game" title="Expand game (F)">⛶</button></div></div>
   <div class="layout"><section class="machine" aria-label="Jarkanoid 3 game">
     <div class="machine-top"><span><i></i> JIII / <b id="level-title">LEVEL 01</b></span><span class="machine-tag">JÉRÔME BARJOT · 2003</span></div>
     <div class="screen" id="screen"><canvas id="game" tabindex="0" aria-label="Game field. Move with mouse, touch, or arrow keys. Space launches. P pauses."></canvas>
       <div class="screen-overlay" id="overlay"><div class="overlay-panel"><span class="eyebrow" id="overlay-kicker">RECOVERING THE CLASSIC</span><h2 id="overlay-title">Loading…</h2><p id="overlay-copy">Preparing the original game resources.</p><button id="primary" class="primary" hidden>Launch ball <span>↗</span></button></div></div>
     </div>
     <div class="scoreboard"><div><span>SCORE</span><strong id="score">000000</strong></div><div><span>BEST</span><strong id="best">000000</strong></div><div><span>LIVES</span><strong id="lives">03</strong></div><div><span>BALLS</span><strong id="balls">01</strong></div><div class="bricks-stat"><span>BRICKS</span><strong id="bricks">000</strong></div></div>
+    <div class="touch-controls"><label for="touch-bat">Slide to move the bat</label><input id="touch-bat" type="range" min="0" max="1024" value="512" aria-label="Move the bat"><div class="touch-actions"><button id="touch-launch">Launch / fire</button><button id="touch-pause">Pause</button><button id="exit-expanded" hidden>Exit view</button></div></div>
   </section>
   <aside><div class="panel session-panel"><div class="section-label"><span>YOUR SESSION</span><span class="live-dot">●</span></div><div class="level-number"><span id="level-big">01</span><div>LEVEL<span id="level-count">OF 30</span></div></div>
     <div class="progress"><div id="progress"></div></div><div class="progress-label"><span id="progress-text">Ready when you are</span><span id="progress-percent">0%</span></div>
@@ -53,7 +55,7 @@ $("#app").innerHTML = `
   </div>
   <div class="panel controls"><div class="section-label">HOW TO PLAY</div><p>Move the bat.<br>Keep the ball alive.<br><em>Break every brick.</em></p><div class="control-row"><span>Move</span><span>Mouse / touch / <kbd>←</kbd><kbd>→</kbd></span></div><div class="control-row"><span>Launch / fire</span><span>Click / <kbd>Space</kbd></span></div><div class="control-row"><span>Pause</span><kbd>P</kbd></div><button id="bonuses" class="bonus-link">22 bonuses. Learn the symbols <span>↗</span></button></div>
   <div class="footnote"><span>110</span> original levels.<br>Three packs. One more try.</div></aside></div>
-  <footer><span>Original game by <a href="http://www.jarkanoid.com/aboutjb.htm" target="_blank" rel="noreferrer">Jérôme Barjot</a></span><span>TypeScript + Canvas · Unofficial preservation port</span><span id="status" role="status" aria-live="polite">Loading game data</span></footer></main>
+  <footer><span>Original game by <a href="http://www.jarkanoid.com/aboutjb.htm" target="_blank" rel="noreferrer">Jérôme Barjot</a></span>${makerCredit}<span id="status" role="status" aria-live="polite">Loading game data</span></footer></main>
   <dialog id="dialog"><div class="dialog-header"><div><span class="eyebrow" id="dialog-kicker">JARKANOÏD 3</span><h2 id="dialog-title"></h2></div><button id="close-dialog" class="icon-button" aria-label="Close dialog">×</button></div><div id="dialog-content"></div></dialog>`;
 const canvas = $<HTMLCanvasElement>("#game"),
   renderer = new Renderer(canvas),
@@ -174,6 +176,12 @@ function updateUI() {
       : "Ⅱ <span>Pause game</span><kbd>P</kbd>";
   $<HTMLButtonElement>("#pause").disabled =
     loading || game.phase === "cleared" || game.phase === "gameover";
+  $("#touch-pause").textContent = game.phase === "paused" ? "Resume" : "Pause";
+  $<HTMLButtonElement>("#touch-pause").disabled =
+    loading || (!game.running && game.phase !== "paused");
+  $<HTMLButtonElement>("#touch-launch").disabled =
+    loading || game.phase === "cleared";
+  touchBat.value = String(game.paddleX);
   if (lastPhase === game.phase || loading) return;
   lastPhase = game.phase;
   $("#overlay").hidden = game.phase === "playing";
@@ -492,14 +500,57 @@ if (sound.muted) {
   $("#mute").textContent = "♪̸";
   $("#mute").setAttribute("aria-label", "Unmute audio");
 }
-async function fullscreen() {
-  try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await $(".machine").requestFullscreen();
-  } catch {
-    $("#status").textContent = "Fullscreen is not available in this browser.";
-  }
+function syncExpanded() {
+  const expanded = $(".machine").classList.contains("expanded");
+  document.body.classList.toggle("game-expanded", expanded);
+  $("#exit-expanded").hidden = !expanded;
+  $("#fullscreen").setAttribute(
+    "aria-label",
+    expanded ? "Exit expanded view" : "Expand game",
+  );
 }
+async function fullscreen() {
+  const machine = $(".machine");
+  if (machine.classList.contains("expanded")) {
+    machine.classList.remove("expanded");
+    if (document.fullscreenElement)
+      await document.exitFullscreen().catch(() => {});
+  } else {
+    machine.classList.add("expanded");
+    if (document.fullscreenEnabled && !matchMedia("(pointer: coarse)").matches)
+      await machine.requestFullscreen().catch(() => {});
+  }
+  syncExpanded();
+}
+let hadFullscreen = false;
+document.addEventListener("fullscreenchange", () => {
+  if (hadFullscreen && !document.fullscreenElement)
+    $(".machine").classList.remove("expanded");
+  hadFullscreen = Boolean(document.fullscreenElement);
+  syncExpanded();
+});
+$("#exit-expanded").onclick = () => void fullscreen();
+$("#touch-pause").onclick = pause;
+const touchBat = $<HTMLInputElement>("#touch-bat");
+touchBat.oninput = () => {
+  if (!loading && game.running) game.movePaddle(Number(touchBat.value));
+};
+const touchLaunch = $("#touch-launch");
+touchLaunch.onpointerdown = (event) => {
+  if (loading) return;
+  event.preventDefault();
+  touchLaunch.setPointerCapture(event.pointerId);
+  activate();
+  game.firing = true;
+};
+for (const event of ["pointerup", "pointercancel", "lostpointercapture"])
+  touchLaunch.addEventListener(event, () => {
+    game.firing = false;
+  });
+touchLaunch.onclick = (event) => {
+  if (event.detail === 0) activate();
+};
+
 $("#fullscreen").onclick = () => void fullscreen();
 $("#pause").onclick = pause;
 $("#primary").onclick = activate;
@@ -547,7 +598,9 @@ window.addEventListener("keydown", (e) => {
     activate();
     if (!loading) game.firing = true;
   }
-  if (k === "p" || k === "escape") pause();
+  if (k === "escape" && $(".machine").classList.contains("expanded"))
+    void fullscreen();
+  else if (k === "p" || k === "escape") pause();
   if (k === "m") mute();
   if (k === "f") void fullscreen();
 });

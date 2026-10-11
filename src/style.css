@@ -993,3 +993,212 @@ dialog::backdrop {
   max-height: 48dvh;
   object-fit: contain;
 }
+
+.touch-controls {
+  display: none;
+}
+.screen canvas {
+  aspect-ratio: 4 / 3;
+}
+.game-expanded {
+  overflow: hidden;
+}
+.machine.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: 100%;
+  height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: #080c07;
+}
+.machine.expanded .screen {
+  width: min(
+    100%,
+    calc(
+      (
+          100dvh - 210px - env(safe-area-inset-top) -
+            env(safe-area-inset-bottom)
+        ) *
+        4 / 3
+    )
+  );
+  height: auto;
+  aspect-ratio: 4 / 3;
+  flex-shrink: 0;
+}
+.machine.expanded .machine-top,
+.machine.expanded .scoreboard,
+.machine.expanded .touch-controls {
+  width: min(100%, 650px);
+  flex-shrink: 0;
+}
+.machine.expanded .touch-controls {
+  display: block;
+}
+.touch-controls {
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--line);
+  background: #192116;
+}
+.touch-controls label {
+  display: block;
+  font: 10px var(--mono);
+  color: var(--muted);
+  text-align: center;
+}
+#touch-bat {
+  display: block;
+  width: 100%;
+  margin: 0;
+  height: 48px;
+  appearance: none;
+  background: transparent;
+  touch-action: none;
+}
+#touch-bat::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #485a35;
+  border-radius: 9px;
+}
+#touch-bat::-moz-range-track {
+  height: 6px;
+  background: #485a35;
+  border-radius: 9px;
+}
+#touch-bat::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -13px;
+  width: 52px;
+  height: 32px;
+  border: 2px solid #edf3e8;
+  border-radius: 16px;
+  background: var(--acid);
+}
+#touch-bat::-moz-range-thumb {
+  width: 48px;
+  height: 28px;
+  border: 2px solid #edf3e8;
+  border-radius: 16px;
+  background: var(--acid);
+}
+.touch-actions {
+  display: flex;
+  gap: 8px;
+}
+.touch-actions button {
+  min-height: 44px;
+  flex: 1;
+  font-size: 12px;
+  touch-action: none;
+}
+#touch-launch {
+  color: #16200c;
+  background: var(--acid);
+  border-color: var(--acid);
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .touch-controls {
+    display: block;
+  }
+  .icon-button,
+  .quiet,
+  .wide,
+  .bonus-link,
+  .pack-tabs button {
+    min-height: 44px;
+  }
+  .icon-button {
+    min-width: 44px;
+  }
+  .masthead {
+    padding: 14px max(16px, env(safe-area-inset-right)) 14px
+      max(16px, env(safe-area-inset-left));
+  }
+  main {
+    padding: 16px max(8px, env(safe-area-inset-right)) 0
+      max(8px, env(safe-area-inset-left));
+  }
+  .game-heading {
+    margin-bottom: 14px;
+  }
+  .scoreboard {
+    padding: 10px 12px;
+  }
+  .machine-tag {
+    display: none;
+  }
+  .screen canvas {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  dialog input {
+    font-size: 16px;
+  }
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  .machine.expanded {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 190px;
+    grid-template-rows: auto 1fr auto;
+    gap: 0 12px;
+    padding: max(6px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(6px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .machine.expanded .screen {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    width: min(
+      100%,
+      calc(
+        (
+            100dvh - 12px - env(safe-area-inset-top) -
+              env(safe-area-inset-bottom)
+          ) *
+          4 / 3
+      )
+    );
+    justify-self: center;
+    align-self: center;
+  }
+  .machine.expanded .machine-top {
+    grid-column: 2;
+    font-size: 8px;
+    padding: 0 8px;
+  }
+  .machine.expanded .scoreboard {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 12px 8px;
+    align-self: center;
+  }
+  .machine.expanded .scoreboard strong {
+    font-size: 17px;
+  }
+  .machine.expanded .scoreboard span {
+    font-size: 8px;
+  }
+  .machine.expanded .touch-controls {
+    grid-column: 2;
+    padding: 8px 0;
+  }
+  .machine.expanded .touch-actions {
+    flex-wrap: wrap;
+  }
+  .machine.expanded #exit-expanded {
+    flex-basis: 100%;
+  }
+  .machine.expanded .machine-tag {
+    display: none;
+  }
+}

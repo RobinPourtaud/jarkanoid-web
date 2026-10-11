@@ -8,3 +8,8 @@ playwright-report/
 test-results/
 
 __pycache__/
+
+.wrangler/
+.env*
+.dev.vars*
+worker-configuration.d.ts
