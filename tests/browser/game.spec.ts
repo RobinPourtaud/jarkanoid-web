@@ -79,8 +79,14 @@ test("next level keeps score and lives; restart resets the session", async ({
     g.lives = 5;
     g.clear();
   });
-  await page.getByRole("button", { name: "Next level" }).click();
+  await expect(page.locator("#overlay")).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean((window as any).__jarkanoid.transition)),
+    )
+    .toBe(true);
   await expect(page.locator("#level-title")).toHaveText("LEVEL 02");
+  await expect(page.getByRole("button", { name: "Launch ball" })).toBeVisible();
   await expect(page.locator("#score")).toHaveText("001234");
   await expect(page.locator("#lives")).toHaveText("05");
   await page.getByRole("button", { name: "Restart session" }).click();
@@ -340,4 +346,121 @@ test("restoring settings resumes a playing game after closing the dialog", async
   expect(
     await page.evaluate(() => (window as any).__jarkanoid.game.phase),
   ).toBe("playing");
+});
+
+test("level transition renders the native mirrored squeeze and the incoming field", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  const pixels = await page.evaluate(async () => {
+    const modulePath = "/src/transition.ts";
+    const { LevelTransition } = await import(modulePath);
+    const canvas = document.createElement("canvas");
+    canvas.width = 1024;
+    canvas.height = 768;
+    const c = canvas.getContext("2d")!;
+    c.fillStyle = "red";
+    c.fillRect(0, 0, 512, 768);
+    c.fillStyle = "blue";
+    c.fillRect(512, 0, 512, 768);
+    const effect = new LevelTransition(canvas);
+    c.fillStyle = "lime";
+    c.fillRect(0, 0, 1024, 768);
+    effect.setNext();
+    const read = (x: number, y: number) => [...c.getImageData(x, y, 1, 1).data];
+    const result: number[][] = [];
+    for (let frame = 0; frame <= 223; frame++) {
+      effect.render();
+      if (frame === 0) result.push(read(300, 400));
+      if (frame === 40)
+        result.push(read(10, 400), read(300, 400), read(500, 5));
+      if (frame === 118) result.push(read(300, 400), read(700, 400));
+      if (frame === 200) result.push(read(300, 400));
+      if (frame === 223) result.push(read(10, 400));
+      effect.update(1 / 60);
+    }
+    await effect.finished;
+    return result;
+  });
+  expect(pixels).toEqual([
+    [255, 0, 0, 255],
+    [0, 0, 0, 255],
+    [255, 0, 0, 255],
+    [0, 0, 0, 255],
+    [0, 0, 255, 255],
+    [255, 0, 0, 255],
+    [0, 255, 0, 255],
+    [0, 255, 0, 255],
+  ]);
+});
+
+test("skip-level bonus transitions once, ignores launch input, and preserves the session", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  await page.evaluate(async () => {
+    const app = (window as any).__jarkanoid;
+    await app.load(2, 12, true);
+    app.game.score = 200;
+    app.game.lives = 4;
+    app.game.applyBonus(19);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean((window as any).__jarkanoid.transition)),
+    )
+    .toBe(true);
+  await page.keyboard.press("Space");
+  await page.locator("#game").click();
+  await expect(page.locator("#level-title")).toHaveText("LEVEL 13");
+  await expect(page.getByRole("button", { name: "Launch ball" })).toBeVisible();
+  const result = await page.evaluate(() => {
+    const app = (window as any).__jarkanoid;
+    return {
+      level: app.level,
+      phase: app.game.phase,
+      score: app.game.score,
+      lives: app.game.lives,
+      stuck: app.game.balls[0].stuck,
+      firing: app.game.firing,
+    };
+  });
+  expect(result).toEqual({
+    level: 13,
+    phase: "ready",
+    score: 1200,
+    lives: 4,
+    stuck: true,
+    firing: false,
+  });
+});
+
+test("a superseding level load cancels the transition and pack completion stays bounded", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Launch ball" }).waitFor();
+  await page.evaluate(() => (window as any).__jarkanoid.game.clear());
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean((window as any).__jarkanoid.transition)),
+    )
+    .toBe(true);
+  await page.evaluate(async () => {
+    const app = (window as any).__jarkanoid;
+    await app.load(0, 30, true);
+    app.game.clear();
+  });
+  await expect(
+    page.getByRole("heading", { name: "Pack complete!" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => Boolean((window as any).__jarkanoid.transition)),
+  ).toBe(false);
+  await expect(page.locator("#level-title")).toHaveText("LEVEL 30");
+  await page.getByRole("button", { name: "Play next pack" }).click();
+  await expect(page.locator("#level-title")).toHaveText("LEVEL 01");
+  await expect(page.locator("#pack-label")).toHaveText("Pack 2");
 });

@@ -36,6 +36,7 @@ addresses = {
     'initial_settings': 0x40e030, 'settings_conversion': 0x40f150,
     'choose_bonus': 0x429200, 'reset_powers': 0x42d230,
     'game_loop': 0x418890, 'render_game': 0x419160,
+    'screen_transition': 0x434110, 'change_level_art': 0x435c70,
     'move_ball': 0x4176e0, 'paddle_collision': 0x419e40,
     'accelerate_ball': 0x41c1c0, 'bonus_gravity': 0x41bd60,
     'bonus_side_bounce': 0x41b8c0, 'bonus_top_bounce': 0x41bab0,

@@ -64,3 +64,5 @@ Original game and assets © Jérôme Barjot / ElitzaSoftware. [Original website]
 The official site describes the game as freeware; that is not an open-source license. No license or ownership claim over the original game, graphics, levels, or music is made here. This repository is an unofficial preservation project, not endorsed by the original author.
 
 Fonts: Barlow Condensed, DM Sans, and IBM Plex Mono, distributed under the accompanying SIL Open Font Licenses in `public/fonts/`.
+
+Between levels, the recovered squeeze-and-mirror transition now plays automatically before the next serve. Score and lives carry over; pack completion keeps the next-pack choice.

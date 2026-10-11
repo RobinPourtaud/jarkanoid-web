@@ -10,6 +10,7 @@ import {
 import { loadArt, json, asset, type Manifest } from "./assets";
 import { Cinema, type SceneName } from "./cinematics";
 import { Renderer } from "./renderer";
+import { LevelTransition } from "./transition";
 import { Sound } from "./audio";
 import { readSave, writeSave } from "./storage";
 
@@ -30,6 +31,7 @@ let manifest: Manifest,
   lastPhase: Phase | "" = "",
   lastFrame = 0;
 let cinema: Cinema | undefined;
+let transition: LevelTransition | undefined;
 let levelDialogPack = pack,
   menuPaused = false;
 const keys = new Set<string>();
@@ -71,12 +73,24 @@ function store() {
   save.muted = sound.muted;
   writeSave(save);
 }
-async function load(nextPack: number, nextLevel: number, fresh = true) {
+async function load(
+  nextPack: number,
+  nextLevel: number,
+  fresh = true,
+  animate = false,
+) {
   const request = ++token;
+  transition?.cancel();
+  transition = undefined;
+  if (animate) {
+    renderer.render(game);
+    transition = new LevelTransition(canvas);
+  }
+  const effect = transition;
   loading = true;
   game.firing = false;
   keys.clear();
-  $("#overlay").hidden = false;
+  $("#overlay").hidden = animate;
   $("#overlay-kicker").textContent = "ONE MOMENT";
   $("#overlay-title").textContent = "Loading level…";
   $("#overlay-copy").textContent = "Preparing the original artwork.";
@@ -88,6 +102,13 @@ async function load(nextPack: number, nextLevel: number, fresh = true) {
     level = nextLevel;
     renderer.setArt(data.art);
     game.load(data.level, fresh);
+    if (effect) {
+      renderer.render(game);
+      effect.setNext();
+      await effect.finished;
+      if (request !== token) return;
+      transition = undefined;
+    }
     loading = false;
     lastPhase = "";
     const p = manifest.packs[pack];
@@ -101,6 +122,9 @@ async function load(nextPack: number, nextLevel: number, fresh = true) {
     updateUI();
   } catch (error) {
     if (request !== token) return;
+    transition?.cancel();
+    transition = undefined;
+    $("#overlay").hidden = false;
     $("#overlay-kicker").textContent = "ASSETS UNAVAILABLE";
     $("#overlay-title").textContent = "Couldn’t load the game.";
     $("#overlay-copy").textContent =
@@ -116,7 +140,8 @@ function activate() {
     .then(() => sound.track(pack, manifest.packs[pack].music[level - 1]));
   if (game.phase === "paused") game.pause();
   else if (game.phase === "cleared") {
-    if (level < manifest.packs[pack].levels) void load(pack, level + 1, false);
+    if (level < manifest.packs[pack].levels)
+      void load(pack, level + 1, false, true);
     else void load((pack + 1) % manifest.packs.length, 1, false);
   } else if (game.phase === "gameover") void load(pack, 1, true);
   else game.launch();
@@ -192,6 +217,11 @@ function updateUI() {
       Math.min(level + 1, manifest.packs[pack].levels),
     );
     store();
+    if (level < manifest.packs[pack].levels) {
+      $("#status").textContent = `Moving to level ${level + 1}`;
+      void load(pack, level + 1, false, true);
+      return;
+    }
   }
   if (game.phase !== "playing")
     $("#status").textContent =
@@ -515,7 +545,7 @@ window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   if (k === " ") {
     activate();
-    game.firing = true;
+    if (!loading) game.firing = true;
   }
   if (k === "p" || k === "escape") pause();
   if (k === "m") mute();
@@ -538,6 +568,10 @@ let nextHud = 0;
 function frame(time: number) {
   const dt = lastFrame ? (time - lastFrame) / 1000 : 0;
   lastFrame = time;
+  if (transition) {
+    if (!dialog.open && !document.hidden) transition.update(dt);
+    transition.render();
+  }
   if (!loading) {
     if (game.running && !dialog.open) {
       const direction =
@@ -592,6 +626,9 @@ if (import.meta.env.DEV)
       },
       get level() {
         return level;
+      },
+      get transition() {
+        return transition;
       },
     },
   });

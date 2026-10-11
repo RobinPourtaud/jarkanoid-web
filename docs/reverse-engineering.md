@@ -196,13 +196,30 @@ Ball sprite rotation now advances with ball speed (`0x42eafa–0x42eb3d`). Bat a
 
 Saved rules move to version 3. Former default speed/acceleration migrate to recovered defaults; custom numeric speed/gain values, best scores, and level progress survive. A custom old constant drop speed maps proportionally to gravity because those settings have different semantics. Restoring defaults gives the recovered baseline.
 
+## Restored between-level transition
+
+The main loop increments the level at `0x418f3d`, loads its artwork and grid, and calls `0x434110` before returning to play. Ordinary clears wait 15 presentation updates after the last brick (`0x42e6b0–0x42e6e0`). There is no native next-level confirmation button.
+
+The surface-capable branch of `0x434110` supplies four stretch-blit passes:
+
+- Contract the outgoing image with horizontal inset `1, 11, …, 511`.
+- Expand its horizontally mirrored copy with inset `512, 502, …, 2`.
+- Contract the mirrored copy again.
+- Reset the game surface and expand the incoming image.
+
+Each pass has 52 frames. The destination rectangle is `(inset, roundEven(inset / 10), 1024 - inset, roundEven(768 - inset / 10))`. The mirrored surface uses the blit-effects value `2` at `0x434390–0x4343d2`. Frame loops and ten-pixel increments are retained in `research/functions/screen_transition.asm`; the next-art loader is retained as `change_level_art.asm`.
+
+The browser now reproduces this geometry against black and advances automatically, retaining score and lives. At its normalized 60 Hz presentation cadence, the hold and four passes take approximately 3.72 seconds. The incoming ball remains attached until the player launches it. Pack completion retains the browser's next-pack choice rather than requesting a nonexistent level.
+
+Browser adaptations: the outgoing frame is frozen during the short hold, skip-level pickups share that hold, and slow asset loading extends it. The sequence pauses while a dialog is open or the document is hidden. This implements the stretch-blit branch, not the native fallback for unsupported surfaces. Original Windows refresh timing has not been measured. Tests cover frame boundaries, actual mirrored/black/incoming canvas pixels, automatic progression, skip-level input blocking, cancellation, score/life preservation, and pack boundaries.
+
 ## What is and is not reproduced
 
 Recovered exactly from resources: all 110 level grids, per-cell source artwork, tiled backgrounds, source sprite frames, sampled sounds, tracker compositions, MIDI note data, 56 D3D meshes, their texture indices, and the valid transform records of nine cinematic scripts.
 
 Reimplemented in TypeScript: ball motion, paddle collision/steering, brick collision/damage, hidden/explosive bricks, 100-ball capacity, all 22 bonus categories, scoring, lives, level progression, pause, settings, and browser persistence.
 
-Adapted or approximate: collision contact geometry/order (including paddle sides and simultaneous brick contacts), double-precision/substep integration rather than native VB6 single-precision arithmetic, random-number stream, the Windows wall-clock cadence, some laser-bank cooldown and rejected-candidate bookkeeping, music transitions, cinematic lighting, and some sprite composition. The engine uses a 120 Hz fixed timestep and substeps to avoid tunneling; it is not a literal translation of every native collision routine. Level-clear timing and the manual next-level UI are browser adaptations.
+Adapted or approximate: collision contact geometry/order (including paddle sides and simultaneous brick contacts), double-precision/substep integration rather than native VB6 single-precision arithmetic, random-number stream, the Windows wall-clock cadence, some laser-bank cooldown and rejected-candidate bookkeeping, music transitions, cinematic lighting, and some sprite composition. The engine uses a 120 Hz fixed timestep and substeps to avoid tunneling; it is not a literal translation of every native collision routine. Between-level stretch geometry is recovered; its wall-clock timing uses the browser presentation cadence described above.
 
 Not reproduced: complete native lighting scripts, undecoded cinematic tail records, full native menu/high-score UI, and every cosmetic reflection/rotation effect. Original Windows gameplay was not run side-by-side, so full behavioral equivalence is **not verified**. No physical iPhone testing was performed; touch input was exercised in a narrow Chromium viewport on the physical Mac.
 
