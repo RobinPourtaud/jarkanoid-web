@@ -6,6 +6,8 @@ The engine is reimplemented; this is **not a complete decompilation of the origi
 
 Play at **https://jarkanoid.pourtaud.dev/**. Everything runs in the browser; no installation, account, plugin, or game server is required.
 
+![Jarkanoid 3 running in the browser, with original level artwork and the live scoreboard](docs/screenshots/gameplay.webp)
+
 ## Run locally
 
 Requires Node.js 22.12+ and Python 3.10+. Asset preparation additionally uses `innoextract`, `ffmpeg`, and `libopenmpt`.
@@ -44,7 +46,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-`dist/` is a standalone static site with locally hosted assets and fonts. Serve it over HTTP; opening `index.html` via `file://` does not support module/data loading. For hosting in a subdirectory, use `npm run build -- --base=/your-path/`.
+`dist/` is a standalone static site with locally hosted assets and fonts. Serve it over HTTP; opening `index.html` via `file://` does not support module/data loading. Offline support currently expects deployment at the domain root.
 
 Tests cover all 110 level grids, collisions at high speed, fixed timestep movement, paddle angles, multiball/life handling, all bonuses, explosive chains, hidden bricks, progression, browser controls, settings persistence, asset decoding, a narrow viewport, all nine 3D scenes with actual framebuffer checks, native bonus draw ranges, collision acceleration, projectile gravity, timed chains, rain restoration, sticky release, settings migration, and Game Over progression. Descended brick pixels are compared directly with their source artwork. Browser tests run one worker to limit memory usage. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to reuse an existing Chromium executable.
 
@@ -60,6 +62,12 @@ Tests cover all 110 level grids, collisions at high speed, fixed timestep moveme
 - `docs/reverse-engineering.md`: format specifications, native addresses, and fidelity limitations.
 
 Downloaded binaries, raw analysis output, and extracted game assets are intentionally excluded from Git. `npm run setup:assets` recreates them from the official download. Do not run extraction while a game session is using those files.
+
+## License
+
+The new browser implementation, extraction tools, tests, and documentation are open source under the [MIT License](LICENSE), copyright © 2026 Robin Pourtaud. Contributions and bug reports are welcome.
+
+Original game resources, screenshots containing original artwork, third-party fonts, and the personal bird logo are not relicensed by the MIT grant. See [third-party and artwork notices](THIRD_PARTY_NOTICES.md).
 
 ## Credits and rights
 
